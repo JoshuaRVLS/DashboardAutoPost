@@ -1,21 +1,67 @@
+@import url("https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,100..900;1,100..900&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #424549;
+  --foreground: #1e2124;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  @apply bg-background;
+  width: 100dvw;
+  height: 100dvh;
+  font-family: "Roboto", sans-serif;
+}
+
+/* Reuseable Style */
+/* Light Theme */
+.center {
+  @apply flex justify-center items-center w-dvw h-dvh;
+}
+
+.form-col {
+  @apply bg-innerBackground text-gray-500 flex border border-black border-solid flex-col transition duration-300 ease-in-out gap-5 shadow-2xl rounded-lg p-5 w-[80%] md:w-[20%];
+}
+
+.form-item {
+  @apply flex flex-col gap-2;
+}
+
+.label {
+  @apply font-medium;
+}
+
+.input {
+  @apply p-4 border bg-background border-solid border-black;
+}
+
+.error {
+  @apply text-red-500 font-semibold;
+}
+
+.success {
+  @apply text-green-400 font-semibold;
+}
+
+.btn {
+  @apply p-3 text-center shadow-2xl rounded-lg bg-btnBackground text-white transition duration-300 hover:opacity-70;
+}
+
+.link {
+  @apply hover:underline;
+}
+
+.absolute-bottom-right {
+  @apply absolute bottom-0 right-0 m-5;
+}
+
+.toast {
+  @apply bg-background text-gray-500;
+}
+
+.tooltip {
+  @apply rounded-full shadow-xl bg-white;
 }

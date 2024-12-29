@@ -7,9 +7,14 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        raleway: ["Raleway", "sans-serif"],
+      },
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        background: "#282b30",
+        text: "#424549",
+        innerBackground: "#1e2124",
+        btnBackground: "#7289da",
       },
     },
   },
