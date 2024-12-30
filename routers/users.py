@@ -15,3 +15,7 @@ async def login(user: User):
             print(user)
             return JSONResponse(user, status_code=200)
     return JSONResponse({ 'msg': 'Invalid username or password' }, status_code=401)
+
+@router.post('test')
+async def test():
+    pass
