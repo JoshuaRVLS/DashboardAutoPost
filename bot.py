@@ -14,14 +14,15 @@ from datetime import datetime, timedelta
 import requests
 import sys
 import traceback
+import dotenv
 from passlib.hash import pbkdf2_sha256
 
 ## ----------------------------------------------------------------------------------------------------------------
 
+dotenv.load_dotenv()
 
 
-
-TOKEN ="MTI5OTY2NzIyNDI4MTQ4MTIyNg.G5Cy0b.ltwEi0xGcRPNDaBAdkq5wGvfCusqWm1qhwvJZA"
+TOKEN =os.environ.get('TOKEN')
 EXPIRED_WEBHOOK = ""
 CLAIMWEBHOOK = ""
 GLOBAL_WEBHOOK_URL = "https://discord.com/api/webhooks/1308832947738251365/IIoiJlMA0rhiqo-hVxjP2sUg1SxpgZ36WInukssYJcznsaEWy2oo3lhTTB7P-UEUzSTj"  # Add your DM webhook URL here
