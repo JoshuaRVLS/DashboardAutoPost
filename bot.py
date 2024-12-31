@@ -4552,8 +4552,6 @@ async def replace_token(ctx):
 
 ## ------------------------------------------------------------------------------------------------
 
+async def run_bot():
+    await bot.start(TOKEN)
 
-
-
-# Run the bot with your token
-bot.run(TOKEN)
