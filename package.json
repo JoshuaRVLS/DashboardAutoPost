@@ -3,7 +3,7 @@
     "nodemon": "^3.1.9"
   },
   "scripts": {
-    "dev": "nodemon server.py",
+    "dev": "nodemon --ignore peruserdata.json server.py",
     "start": "python server.py"
   }
 }
