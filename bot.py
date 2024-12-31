@@ -19,7 +19,7 @@ from passlib.hash import pbkdf2_sha256
 
 ## ----------------------------------------------------------------------------------------------------------------
 
-dotenv.load_dotenv()
+dotenv.load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 
 TOKEN =os.environ.get('TOKEN')
