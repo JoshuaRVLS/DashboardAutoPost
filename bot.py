@@ -1214,12 +1214,11 @@ async def claim(ctx):
             self.add_item(self.password)
         
         async def on_submit(self, interaction: discord.Interaction):
-            await interaction.response.send_message('Test')
             code = self.code.value.strip()
             user_id = str(interaction.user.id)
             
             if code not in codes or codes[code]["claimed"]:
-                await interaction.response.send_message(
+                return await interaction.response.send_message(
                     embed=discord.Embed(
                         title="<:warnsign:1309124972899340348> Invalid Code",
                         description="The code is invalid or already claimed.",
@@ -1227,7 +1226,6 @@ async def claim(ctx):
                     ),
                     ephemeral=True
                 )
-                return
             
             duration = codes[code]["duration"]
             expiry_date_utc = datetime.now() + timedelta(days=duration)
@@ -1242,6 +1240,7 @@ async def claim(ctx):
                 user_accounts[user_id] = {
                     "accounts": {},
                     "username": self.username.value,
+                    "photo_profile": interaction.user.display_avatar.url,
                     "password": pbkdf2_sha256.hash(self.password.value),
                     "expiry": expiry_date_wib.strftime("%d-%m-%Y | %H:%M:%S"),
                     "max_bots": codes[code]["max_bots"],

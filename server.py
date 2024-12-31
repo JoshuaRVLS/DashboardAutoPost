@@ -8,8 +8,6 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 
 
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(run_bot())

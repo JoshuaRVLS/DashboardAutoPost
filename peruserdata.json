@@ -2,9 +2,10 @@
     "1097445155390365726": {
         "accounts": {},
         "username": "JoshuaRVL",
-        "password": "$pbkdf2-sha256$29000$ZezdG4Ow9t47R.g9p9R6bw$30geqFH262I1v28bM40PUJ8P4PjMbh2Ic0Yfsb.LUDU",
-        "expiry": "24-12-2024 | 16:48:55",
-        "expired": false,
-        "max_bots": 3
+        "photo_profile": "https://cdn.discordapp.com/avatars/1097445155390365726/b98970551a0910726f92bde4808e2d4f.png?size=1024",
+        "password": "$pbkdf2-sha256$29000$UCrlvBeilPK.F.L8/1/rnQ$LhdF1HkcrZUsx02cihx2ndFmIG0C2JybIPaiohaxDq0",
+        "expiry": "10-01-2025 | 23:38:36",
+        "max_bots": 3,
+        "expired": false
     }
 }
