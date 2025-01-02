@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import Response, JSONResponse
 from models.user import User, Code
-from bot import user_accounts, load_data, save_data, codes, load_users 
+from bot import user_accounts, load_data, save_data, codes, load_users, load_codes
 from passlib.hash import pbkdf2_sha256 as sha256
 from datetime import datetime, timedelta
 
@@ -22,19 +22,24 @@ async def getUser(user: User):
 @router.patch('/renew/{id}')
 async def renewUser(id: str, code: Code):
     code = code.value.strip()
+    codes = load_codes()
+    user_accounts = load_users()
+    print(code)
+    print(codes)
     if code not in codes or codes[code]["claimed"]:
-        return JSONResponse({"msg": "Code expired or claimed."})
+        return JSONResponse({"msg": "Code expired or claimed."}, 400)
     duration = codes[code]["duration"]
     expiry_date_utc = datetime.now() + timedelta(days=duration)
     expiry_date_wib = expiry_date_utc + timedelta(hours=7)
     if id in user_accounts:
                 user_info = user_accounts[id]
+                user_info['expired'] = False
                 user_info["max_bots"] += codes[code]["max_bots"]
                 current_expiry_wib = datetime.strptime(user_info["expiry"], "%d-%m-%Y | %H:%M:%S")
                 user_info["expiry"] = max(current_expiry_wib, expiry_date_wib).strftime("%d-%m-%Y | %H:%M:%S")     
     codes[code]["claimed"] = True
     save_data()
-    return JSONResponse({"msg": "Account renewed."})
+    return JSONResponse({"msg": "Account renewed."}, 201)
 
 @router.get('/{id}')
 async def getUserByID(id: str):
