@@ -1245,6 +1245,7 @@ async def claim(ctx):
                     "expiry": expiry_date_wib.strftime("%d-%m-%Y | %H:%M:%S"),
                     "max_bots": codes[code]["max_bots"],
                     "expired": False,
+                    "admin": False,
                 }
             
             codes[code]["claimed"] = True
@@ -4558,6 +4559,9 @@ async def replace_token(ctx):
 def load_users():
     load_data()
     return user_accounts
+
+def load_codes():
+    return codes
 
 ## ------------------------------------------------------------------------------------------------
 
