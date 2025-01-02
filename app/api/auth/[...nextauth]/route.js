@@ -8,6 +8,7 @@ const handler = new NextAuth({
       name: "credentials",
       credentials: {},
       async authorize({ username, password }) {
+        console.log("Authorize Section");
         const response = await axios.post(
           "http://127.0.0.1:8080/api/v1/users/login",
           {
@@ -37,15 +38,25 @@ const handler = new NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
   callbacks: {
     async jwt({ token, user }) {
-      console.log(user);
-      if (user) {
+      if (!token.user) {
         token.user = user;
+      } else {
+        try {
+          console.log(token.user);
+          const response = await axios.get(
+            `http://localhost:8080/api/v1/users/${token.user.userId}`
+          );
+          const newUserData = response.data;
+          token.user = newUserData;
+        } catch (error) {
+          console.log(error);
+        }
       }
-
       return token;
     },
 
     async session({ session, token }) {
+      console.log("Session Section");
       session.user = token.user; // Add username to session
 
       return session;
