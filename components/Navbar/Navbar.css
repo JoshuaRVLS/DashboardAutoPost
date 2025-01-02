@@ -1,0 +1,23 @@
+.navbar {
+  @apply z-10 text-gray-400 flex flex-col bg-innerBackground shadow-lg p-2 border overflow-hidden border-black gap-12 font-raleway left-0 top-0 bottom-0 h-full w-fit;
+}
+
+.photo {
+  @apply rounded-full size-12 border border-black cursor-pointer;
+}
+
+.links {
+  @apply w-full;
+}
+
+.links a {
+  @apply cursor-pointer w-full min-w-full;
+}
+
+.dead a {
+  @apply cursor-not-allowed;
+}
+
+.link-active {
+  @apply bg-btnBackground p-2 rounded-md min-w-full text-white;
+}
