@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    asyncio.create_task(run_bot())
+    await asyncio.create_task(run_bot())
     yield 
     await bot.close()
 

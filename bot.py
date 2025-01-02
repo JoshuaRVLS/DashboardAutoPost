@@ -1351,6 +1351,7 @@ async def info(ctx):
         f"**<:bott:1308056946263461989> Max Accounts Allowed:** {max_bots}\n"
     ))
 
+
 @tasks.loop(hours=1)
 async def expire_accounts_task():
     """
@@ -1943,6 +1944,11 @@ def save_data():
 
 # Load data when the bot starts
 load_data()
+
+@tasks.loop(seconds=5)
+async def update_accounts():
+    print('USer accounts updated.')
+    load_data()
 
 @bot.hybrid_command(name="update", description="Update server, channels, and messages for a specific account")
 async def update(ctx):
