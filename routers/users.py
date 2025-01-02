@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import Response, JSONResponse
 from models.user import User, Code
-from bot import user_accounts, save_data, codes 
+from bot import user_accounts, load_data, save_data, codes, load_users 
 from passlib.hash import pbkdf2_sha256 as sha256
 from datetime import datetime, timedelta
 
@@ -9,6 +9,7 @@ router = APIRouter(prefix='/users')
 
 @router.post('/login')
 async def getUser(user: User):
+    user_accounts = load_users()
     for user_id, user_data in user_accounts.items():
         if user_data['username'] == user.username and sha256.verify(user.password, user_data['password']):
             user = user_accounts[user_id]
@@ -37,7 +38,7 @@ async def renewUser(id: str, code: Code):
 
 @router.get('/{id}')
 async def getUserByID(id: str):
-     print(user_accounts)
+     user_accounts = load_users()
      if not id in user_accounts:
           return JSONResponse({"msg": "User not found."}, 404)
      user = user_accounts[id]
