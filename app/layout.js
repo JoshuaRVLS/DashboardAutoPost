@@ -4,7 +4,7 @@ import { Toaster } from "react-hot-toast";
 
 export default function RootLayout({ children, session }) {
   return (
-    <html lang="en" suppressHydrationWarning={false}>
+    <html lang="en" suppressHydrationWarning={true}>
       <body className={`antialiased`}>
         <AuthProvider session={session}>
           <Toaster
