@@ -1173,7 +1173,7 @@ async def claim(ctx):
                 reg_embed = discord.Embed(
                     title="<:verified:1308057482085666837> Registration Details",
                     description=(
-                        f"**<:clock:1308057442730508348> Expiry Date (WIB):** {user_info['expiry']}\n"
+                        f"**<:clock:1308057442730508348> Expiry Date (WIB):** {datetime.fromtimestamp(user_info['expiry']).strftime("%d-%m-%Y | %H:%M:%S")}\n"
                         f"**<:bott:1308056946263461989> Max Accounts:** {user_info['max_bots']}"
                     ),
                     color=discord.Color.green()
@@ -1235,14 +1235,14 @@ async def claim(ctx):
                 user_info = user_accounts[user_id]
                 user_info["max_bots"] += codes[code]["max_bots"]
                 current_expiry_wib = datetime.strptime(user_info["expiry"], "%d-%m-%Y | %H:%M:%S")
-                user_info["expiry"] = max(current_expiry_wib, expiry_date_wib).strftime("%d-%m-%Y | %H:%M:%S")
+                user_info["expiry"] = max(current_expiry_wib, expiry_date_wib).timestamp()
             else:
                 user_accounts[user_id] = {
                     "accounts": {},
                     "username": self.username.value,
                     "photo_profile": interaction.user.display_avatar.url,
                     "password": pbkdf2_sha256.hash(self.password.value),
-                    "expiry": expiry_date_wib.strftime("%d-%m-%Y | %H:%M:%S"),
+                    "expiry": expiry_date_wib.timestamp(),
                     "max_bots": codes[code]["max_bots"],
                     "expired": False,
                     "admin": False,
@@ -1264,7 +1264,7 @@ async def claim(ctx):
             success_embed = discord.Embed(
                 title="<:verified:1308057482085666837> Code Claimed Successfully",
                 description=(
-                    f"**<:clock:1308057442730508348> Expiry Date (WIB):** {user_accounts[user_id]['expiry']}\n"
+                    f"**<:clock:1308057442730508348> Expiry Date (WIB):** {datetime.fromtimestamp(user_accounts[user_id]['expiry']).strftime("%d-%m-%Y | %H:%M:%S")}\n"
                     f"**<:bott:1308056946263461989> Max Accounts:** {user_accounts[user_id]['max_bots']}\n\n⭐ **Reps please :** https://discord.com/channels/1308830313568538714/1317879488628920320"
 
                 ),
