@@ -1234,7 +1234,7 @@ async def claim(ctx):
             if user_id in user_accounts:
                 user_info = user_accounts[user_id]
                 user_info["max_bots"] += codes[code]["max_bots"]
-                current_expiry_wib = datetime.strptime(user_info["expiry"], "%d-%m-%Y | %H:%M:%S")
+                current_expiry_wib = datetime.fromtimestamp(user_info["expiry"])
                 user_info["expiry"] = max(current_expiry_wib, expiry_date_wib).timestamp()
             else:
                 user_accounts[user_id] = {
@@ -1352,7 +1352,6 @@ async def info(ctx):
         f"**<:bott:1308056946263461989> Max Accounts Allowed:** {max_bots}\n"
     ))
 
-
 @tasks.loop(hours=1)
 async def expire_accounts_task():
     """
@@ -1365,7 +1364,7 @@ async def expire_accounts_task():
 
     for user_id, user_info in user_accounts.items():
         try:
-            expiry_wib = datetime.strptime(user_info["expiry"], "%d-%m-%Y | %H:%M:%S")
+            expiry_wib = datetime.fromtimestamp(user_info["expiry"]).strftime("%d-%m-%Y | %H:%M:%S")
         except ValueError as e:
             print(f"Error parsing expiry for user {user_id}: {e}")
             continue
