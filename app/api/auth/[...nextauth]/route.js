@@ -42,14 +42,23 @@ const handler = new NextAuth({
         token.user = user;
       } else {
         try {
-          console.log(token.user);
           const response = await axios.get(
             `http://localhost:8080/api/v1/users/${token.user.userId}`
           );
-          const newUserData = response.data;
-          token.user = newUserData;
+          if (response.status === 200) {
+            const newUserData = response.data;
+            token.user = newUserData;
+          } else if (response.status === 404) {
+            console.log("User tidak ada");
+            return {
+              error: "User sudah tidak ada.",
+            };
+          }
         } catch (error) {
-          console.log(error);
+          console.log("User tidak ada");
+          return {
+            error: "User sudah tidak ada.",
+          };
         }
       }
       return token;
@@ -57,8 +66,9 @@ const handler = new NextAuth({
 
     async session({ session, token }) {
       console.log("Session Section");
+      session.error = token.error;
       session.user = token.user; // Add username to session
-
+      console.log(session);
       return session;
     },
   },
