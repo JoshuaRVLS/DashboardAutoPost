@@ -35,8 +35,8 @@ async def renewUser(id: str, code: Code):
                 user_info = user_accounts[id]
                 user_info['expired'] = False
                 user_info["max_bots"] += codes[code]["max_bots"]
-                current_expiry_wib = datetime.strptime(user_info["expiry"], "%d-%m-%Y | %H:%M:%S")
-                user_info["expiry"] = max(current_expiry_wib, expiry_date_wib).strftime("%d-%m-%Y | %H:%M:%S")     
+                current_expiry_wib = datetime.fromtimestamp(user_info["expiry"])
+                user_info["expiry"] = max(current_expiry_wib, expiry_date_wib).timestamp()     
     codes[code]["claimed"] = True
     save_data()
     return JSONResponse({"msg": "Account renewed."}, 201)
