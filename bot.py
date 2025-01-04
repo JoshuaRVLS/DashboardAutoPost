@@ -1233,7 +1233,7 @@ async def claim(ctx):
             
             if user_id in user_accounts:
                 user_info = user_accounts[user_id]
-                user_info["max_bots"] += codes[code]["max_bots"]
+                user_info["max_bots"] = codes[code]["max_bots"]
                 current_expiry_wib = datetime.fromtimestamp(user_info["expiry"])
                 user_info["expiry"] = max(current_expiry_wib, expiry_date_wib).timestamp()
             else:
