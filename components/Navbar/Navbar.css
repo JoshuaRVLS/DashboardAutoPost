@@ -11,7 +11,7 @@
 }
 
 .links a {
-  @apply cursor-pointer w-full min-w-full;
+  @apply block cursor-pointer w-full min-w-full;
 }
 
 .dead a {
@@ -19,5 +19,5 @@
 }
 
 .link-active {
-  @apply bg-btnBackground p-2 rounded-md min-w-full text-white;
+  @apply bg-btnBackground p-2 rounded-md w-[100%] text-white;
 }
