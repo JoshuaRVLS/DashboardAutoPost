@@ -66,9 +66,7 @@ const handler = new NextAuth({
 
     async session({ session, token }) {
       console.log("Session Section");
-      session.error = token.error;
-      session.user = token.user; // Add username to session
-      console.log(session);
+      session = token;
       return session;
     },
   },
