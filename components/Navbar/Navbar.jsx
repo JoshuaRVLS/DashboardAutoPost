@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { usePathname } from "next/navigation";
+import AccountSelect from "../AccountSelect/AccountSelect";
 
 const Navbar = () => {
   const { data: session } = useSession();
@@ -18,13 +19,16 @@ const Navbar = () => {
       className={`navbar absolute`}
       animate={{ height: profileMenu ? "4rem" : "100dvh" }}
     >
-      <div className="flex gap-4 items-center justify-center">
-        <img
-          onClick={() => setProfileMenu(!profileMenu)}
-          className="photo"
-          src={session?.user?.photo_profile}
-        />
-        <motion.span>{session?.user?.username}</motion.span>
+      <div className="flex flex-col gap-4 items-center justify-center">
+        <div className="flex items-center justify-center gap-2">
+          <img
+            onClick={() => setProfileMenu(!profileMenu)}
+            className="photo"
+            src={session?.user?.photo_profile}
+          />
+          <motion.span>{session?.user?.username}</motion.span>
+        </div>
+        <AccountSelect />
       </div>
       <div className={`links ${session?.user?.expired ? "dead" : ""}`}>
         <Link className={path === "/dashboard" ? "link-active" : ""} href={"/"}>
