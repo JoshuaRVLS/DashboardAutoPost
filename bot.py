@@ -356,7 +356,7 @@ async def botusage(ctx):
 
 ## ---------------------------------------------------------------------------------------------------------------------------------------
 @bot.hybrid_command(name='add', description='Add your Discord account token')
-async def add_account(ctx, token: str, account_name: str):
+async def add_account(ctx, token: str):
     user_id = str(ctx.author.id)
     
     # Initial checks
@@ -380,12 +380,12 @@ async def add_account(ctx, token: str, account_name: str):
                     user_data = await response.json()
                     
                     # Check for duplicate account names
-                    if account_name in user_info.get("accounts", {}):
+                    if user_data['username'] in user_info.get("accounts", {}):
                         await loading_msg.edit(embed=create_embed("Error", "<a:no:1315115615320670293> An account with this name already exists."))
                         return
 
                     # Initialize account structure
-                    user_info["accounts"][account_name] = {
+                    user_info["accounts"][user_data['username']] = {
                         'token': token,
                         'status': 'offline',
                         'online_time': 0,
