@@ -7,11 +7,11 @@
 }
 
 .links {
-  @apply w-full;
+  @apply w-full flex flex-col gap-4;
 }
 
 .links a {
-  @apply block cursor-pointer w-full min-w-full;
+  @apply block cursor-pointer w-full p-2 min-w-full;
 }
 
 .dead a {
@@ -19,5 +19,9 @@
 }
 
 .link-active {
-  @apply bg-btnBackground p-2 rounded-md w-[100%] text-white;
+  @apply bg-btnBackground rounded-md text-white;
+}
+
+.account-links {
+  @apply links;
 }

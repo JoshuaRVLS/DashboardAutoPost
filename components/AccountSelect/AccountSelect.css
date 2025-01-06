@@ -1,0 +1,11 @@
+.accounts {
+  @apply cursor-pointer hover:opacity-70 relative select-none duration-300 transition-all appearance-none  outline-none p-2 pl-4 rounded-md font-raleway bg-background w-full font-bold capitalize;
+}
+
+.account-menu {
+  @apply absolute shadow-xl border-black border flex flex-col w-[90%] gap-2 p-2 rounded-md bg-background select-none origin-top-left mt-2;
+}
+
+.account-menu span {
+  @apply cursor-pointer hover:text-btnBackground transition-all duration-300;
+}

@@ -34,6 +34,30 @@ const Navbar = () => {
         <Link className={path === "/dashboard" ? "link-active" : ""} href={"/"}>
           Status
         </Link>
+        <motion.div className="account-links">
+          <Link
+            className={path === "/dashboard/account" ? "link-active" : ""}
+            href={"/dashboard/account"}
+          >
+            Account Info
+          </Link>
+          <Link
+            className={
+              path === "/dashboard/account/servers" ? "link-active" : ""
+            }
+            href={"/dashboard/account/servers"}
+          >
+            Servers
+          </Link>
+          <Link
+            className={
+              path === "/dashboard/account/channels" ? "link-active" : ""
+            }
+            href={"/dashboard/account/channels"}
+          >
+            Channels
+          </Link>
+        </motion.div>
       </div>
     </motion.nav>
   );
