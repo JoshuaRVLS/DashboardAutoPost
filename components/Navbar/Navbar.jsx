@@ -7,6 +7,14 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import { usePathname } from "next/navigation";
 import AccountSelect from "../AccountSelect/AccountSelect";
+import {
+  AiOutlineProfile,
+  AiFillProfile,
+  AiOutlineSetting,
+  AiFillEye,
+  AiOutlineEye,
+  AiFillSetting,
+} from "react-icons/ai";
 
 const Navbar = () => {
   const { data: session } = useSession();
@@ -32,30 +40,33 @@ const Navbar = () => {
       </div>
       <div className={`links ${session?.user?.expired ? "dead" : ""}`}>
         <Link className={path === "/dashboard" ? "link-active" : ""} href={"/"}>
-          Status
+          {path === "/dashboard" ? <AiFillEye /> : <AiOutlineEye />}
+          <span>Status</span>
         </Link>
         <motion.div className="account-links">
           <Link
             className={path === "/dashboard/account" ? "link-active" : ""}
             href={"/dashboard/account"}
           >
-            Account Info
+            {path === "/dashboard/account" ? (
+              <AiFillProfile />
+            ) : (
+              <AiOutlineProfile />
+            )}
+            <span>Account Info</span>
           </Link>
           <Link
             className={
-              path === "/dashboard/account/servers" ? "link-active" : ""
+              path === "/dashboard/account/configuration" ? "link-active" : ""
             }
-            href={"/dashboard/account/servers"}
+            href={"/dashboard/account/configuration"}
           >
-            Servers
-          </Link>
-          <Link
-            className={
-              path === "/dashboard/account/channels" ? "link-active" : ""
-            }
-            href={"/dashboard/account/channels"}
-          >
-            Channels
+            {path === "/dashboard/account/configuration" ? (
+              <AiFillSetting />
+            ) : (
+              <AiOutlineSetting />
+            )}
+            <span>Configuration</span>
           </Link>
         </motion.div>
       </div>

@@ -1,5 +1,5 @@
 .accounts {
-  @apply cursor-pointer hover:opacity-70 relative select-none duration-300 transition-all appearance-none  outline-none p-2 pl-4 rounded-md font-raleway bg-background w-full font-bold capitalize;
+  @apply cursor-pointer flex items-center gap-2 hover:opacity-70 relative select-none duration-300 transition-all appearance-none  outline-none p-2 pl-4 rounded-md font-raleway bg-background w-full font-bold capitalize;
 }
 
 .account-menu {

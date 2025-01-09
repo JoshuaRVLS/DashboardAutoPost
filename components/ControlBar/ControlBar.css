@@ -1,0 +1,7 @@
+.control-bar {
+  @apply absolute right-0 bottom-0 m-10 flex justify-center flex-col items-center gap-3;
+}
+
+.icon {
+  @apply text-btnBackground shadow-xl size-16 rounded-full cursor-pointer;
+}

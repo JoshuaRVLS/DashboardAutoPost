@@ -5,11 +5,14 @@ import { motion } from "motion/react";
 import { useSession } from "next-auth/react";
 import React, { useContext, useEffect, useState } from "react";
 import "./AccountSelect.css";
+import AccountForm from "../AccountForm/AccountForm";
+import { AiOutlineUserSwitch, AiOutlineUser } from "react-icons/ai";
 
 const AccountSelect = () => {
   const { data: session } = useSession();
   const { currentAccount, setCurrentAccount } = useContext(AccountContext);
   const [open, setOpen] = useState(false);
+  const [openForm, setOpenForm] = useState(false);
 
   const handleChange = (e) => {
     setOpen(false);
@@ -20,8 +23,15 @@ const AccountSelect = () => {
   return (
     session && (
       <div className="w-full">
-        <motion.div onClick={() => setOpen(!open)} className="accounts">
-          {currentAccount || "Select Account"}
+        <motion.div
+          onClick={() => {
+            setOpen(!open);
+            setOpenForm(false);
+          }}
+          className="accounts"
+        >
+          <AiOutlineUserSwitch />
+          <span>{currentAccount || "Select Account"}</span>
         </motion.div>
         <motion.div
           className="account-menu"
@@ -39,18 +49,25 @@ const AccountSelect = () => {
             <motion.span
               className={`${
                 currentAccount === accountName && "text-btnBackground"
-              }`}
+              } flex gap-2 items-center`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               onClick={handleChange}
               key={key}
             >
-              {accountName}
+              <AiOutlineUser />
+              <span>{accountName}</span>
             </motion.span>
           ))}
-          <button className="border border-btnBackground p-2 rounded-full my-2 transition-all duration-300 hover:bg-btnBackground text-white">
+          <button
+            onClick={() => setOpenForm(true)}
+            className="border border-btnBackground p-2 rounded-full my-2 transition-all duration-300 hover:bg-btnBackground text-white"
+          >
             Add
           </button>
+
+          <AccountForm setOpenForm={setOpenForm} openForm={openForm} />
+
           <p className="text-center  border border-black shadow-xl p-2 uppercase">
             {session?.user?.max_bots -
               Object.keys(session?.user?.accounts).length}{" "}
