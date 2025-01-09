@@ -34,6 +34,10 @@ body {
   @apply font-medium;
 }
 
+.btn-cancel {
+  @apply p-2 border border-red-900 rounded-lg transition-all duration-300 hover:opacity-70 text-red-500;
+}
+
 .input {
   @apply p-4 border bg-background border-solid border-black;
 }
