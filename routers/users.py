@@ -1,9 +1,11 @@
 from fastapi import APIRouter
 from fastapi.responses import Response, JSONResponse
-from models.user import User, Code
-from bot import user_accounts, load_data, save_data, codes, load_users, load_codes
+from models.user import User, Code, Account
+from bot import user_accounts, load_data, save_data, codes, load_users, load_codes, force_activity_update
 from passlib.hash import pbkdf2_sha256 as sha256
 from datetime import datetime, timedelta
+import aiohttp
+import discord
 
 router = APIRouter(prefix='/users')
 
@@ -49,3 +51,60 @@ async def getUserByID(id: str):
      user = user_accounts[id]
      user['userId'] = id
      return JSONResponse(user, 200)
+
+@router.post('/accounts')
+async def createAccount(account: Account):
+    user_accounts = load_users()
+    user_id = str(account.id)
+    
+    # Initial checks
+    if user_id not in user_accounts:
+        return JSONResponse({"msg": "You must claim a code to register first."}, 400)
+    
+
+    user_info = user_accounts[user_id]
+    if len(user_info.get("accounts", {})) >= user_info["max_bots"]:
+        return JSONResponse({"msg": "You have reached your maximum bot limit."}, 400)
+    
+    try:
+        headers = {'Authorization': account.token, 'Content-Type': 'application/json'}
+        async with aiohttp.ClientSession() as session:
+            async with session.get('https://discord.com/api/v9/users/@me', headers=headers) as response:
+                if response.status == 200:
+                    user_data = await response.json()
+                    
+                    # Check for duplicate account names
+                    if user_data['username'] in user_info.get("accounts", {}):
+                        return JSONResponse({"msg": "Account is registered."})
+                       
+
+                    # Initialize account structure
+                    user_info["accounts"][account.username] = {
+                        'token': account.token,
+                        'status': 'offline',
+                        'online_time': 0,
+                        'messages_sent': 0,
+                        'autoposting': False,
+                        'server_id': None,
+                        'channels': {},
+                        'webhook': None,
+                        'dm_monitoring': False,
+                        'dm_webhook': None,
+                        'bot_info': {
+                            'username': user_data['username'],
+                            'discriminator': user_data['discriminator'],
+                            'id': user_data['id'],
+                            'added_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        }
+                    }
+
+                    save_data()
+                    await force_activity_update()
+
+                    return JSONResponse({"msg": f"Account added successfuly"}, 201)
+                else:
+                    return JSONResponse({"msg": "The provided token is invalid."}, 400)
+    except Exception as e:
+        print(e)
+                
+

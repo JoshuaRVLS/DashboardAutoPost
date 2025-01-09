@@ -6,3 +6,8 @@ class User(BaseModel):
 
 class Code(BaseModel):
     value: str
+
+class Account(BaseModel):
+    id: str
+    token: str
+    username: str
