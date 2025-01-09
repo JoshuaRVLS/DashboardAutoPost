@@ -36,6 +36,7 @@ const handler = new NextAuth({
     signIn: "/",
   },
   secret: process.env.NEXTAUTH_SECRET,
+  events: {},
   callbacks: {
     async jwt({ token, user }) {
       if (!token.user) {
