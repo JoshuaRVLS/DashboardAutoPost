@@ -28,6 +28,7 @@ const AccountForm = ({ openForm, setOpenForm }) => {
       toast.remove(toastId);
       toast.error(error.response.data.msg);
     }
+    setOpenForm(false);
   };
 
   return (
