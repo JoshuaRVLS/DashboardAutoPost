@@ -62,7 +62,7 @@ async def createAccount(account: Account):
         return JSONResponse({"msg": "You must claim a code to register first."}, 400)
     
 
-    user_info = user_accounts[user_id]
+    user_info: dict = user_accounts[user_id]
     if len(user_info.get("accounts", {})) >= user_info["max_bots"]:
         return JSONResponse({"msg": "You have reached your maximum bot limit."}, 400)
     
@@ -74,12 +74,13 @@ async def createAccount(account: Account):
                     user_data = await response.json()
                     
                     # Check for duplicate account names
-                    if user_data['username'] in user_info.get("accounts", {}):
-                        return JSONResponse({"msg": "Account is registered."})
+                    for user in user_info.get('accounts').values():
+                        if account.token == user.get('token'):
+                            return JSONResponse({"msg": "Account is registered."}, 400)
                        
 
                     # Initialize account structure
-                    user_info["accounts"][account.username] = {
+                    user_info["accounts"][user_data['username']] = {
                         'token': account.token,
                         'status': 'offline',
                         'online_time': 0,
