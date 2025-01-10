@@ -10,4 +10,3 @@ class Code(BaseModel):
 class Account(BaseModel):
     id: str
     token: str
-    username: str
