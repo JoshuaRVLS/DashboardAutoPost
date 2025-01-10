@@ -3,13 +3,12 @@
 import React, { useState } from "react";
 import "./AccountForm.css";
 import { motion } from "motion/react";
-import toast from "react-hot-toast";
+import toast, { ToastBar } from "react-hot-toast";
 import axios from "axios";
 import { useSession } from "next-auth/react";
 
 const AccountForm = ({ openForm, setOpenForm }) => {
   const [token, setToken] = useState("");
-  const [username, setUsername] = useState("");
   const { data: session, update } = useSession();
 
   const addAccount = async (e) => {
@@ -20,18 +19,14 @@ const AccountForm = ({ openForm, setOpenForm }) => {
         {
           id: session?.user?.userId,
           token,
-          username,
         }
       );
       toast.remove(toastId);
-      if (response.status === 400) {
-        toast.error(response.data.msg);
-        return;
-      }
       await update();
       toast.success(response.data.msg);
     } catch (error) {
-      console.log(error);
+      toast.remove(toastId);
+      toast.error(error.response.data.msg);
     }
   };
 
@@ -47,12 +42,6 @@ const AccountForm = ({ openForm, setOpenForm }) => {
         className="input h-1"
         type="password"
         placeholder="Token"
-      />
-      <input
-        onChange={(e) => setUsername(e.target.value)}
-        value={username}
-        className="input h-1"
-        placeholder="username"
       />
       <button onClick={addAccount} className="btn h-fit">
         Add
