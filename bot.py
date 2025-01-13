@@ -356,7 +356,7 @@ async def botusage(ctx):
 
 ## ---------------------------------------------------------------------------------------------------------------------------------------
 @bot.hybrid_command(name='add', description='Add your Discord account token')
-async def add_account(ctx, token: str):
+async def add_account(ctx, token: str, account_name: str):
     user_id = str(ctx.author.id)
     
     # Initial checks
@@ -380,15 +380,15 @@ async def add_account(ctx, token: str):
                     user_data = await response.json()
                     
                     # Check for duplicate account names
-                    if user_data['username'] in user_info.get("accounts", {}):
+                    if account_name in user_info.get("accounts", {}):
                         await loading_msg.edit(embed=create_embed("Error", "<a:no:1315115615320670293> An account with this name already exists."))
                         return
 
                     # Initialize account structure
-                    user_info["accounts"][user_data['username']] = {
+                    user_info["accounts"][account_name] = {
                         'token': token,
                         'status': 'offline',
-                        'online_time': 0,
+                        'start_time': None,
                         'messages_sent': 0,
                         'autoposting': False,
                         'server_id': None,
@@ -401,6 +401,7 @@ async def add_account(ctx, token: str):
                             'discriminator': user_data['discriminator'],
                             'id': user_data['id'],
                             'added_at': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                        
                         }
                     }
 
@@ -424,7 +425,7 @@ async def add_account(ctx, token: str):
                     )
                     success_embed.add_field(
                         name="Next Steps",
-                        value="1. Use `/addserver` to add servers\n2. Use `/setting` to configure channels\n3. Use `/webhooks` to set notifications",
+                        value="1. Use `/configure` to add servers\n2. Use `/setting` to set messages and delay\n3. Use `/webhooks` to set notifications",
                         inline=False
                     )
 
@@ -453,158 +454,284 @@ async def add_account(ctx, token: str):
         await loading_msg.edit(embed=create_embed("Error", f"An error occurred: {str(e)}"))
 ## --------------------------------------------------------------------------------
 
-@bot.hybrid_command(name="status", description="Show detailed status of running bots")
+@bot.hybrid_command(name="status", description="Configure status monitoring")
 async def status(ctx):
     user_id = str(ctx.author.id)
     
     if user_id not in user_accounts or not user_accounts[user_id].get("accounts"):
-        await ctx.send(embed=create_embed("<a:no:1315115615320670293> No Accounts Found", "You have no registered accounts."))
+        await ctx.send(embed=create_embed("No Accounts Found", "You have no registered accounts."))
         return
-
-    # Create loading message
-    loading_msg = await ctx.send(
-        embed=discord.Embed(
-            title="<:info:1313673655720611891> Fetching Status",
-            description="Gathering information about your accounts...",
-            color=discord.Color.blue()
-        )
-    )
-
-    async def update_status():
-        try:
-            accounts = user_accounts[user_id]["accounts"]
-            embeds = []
-            current_embed = discord.Embed(
-                title="<:info:1313673655720611891> Bot Status Overview",
-                color=discord.Color.blue(),
-                timestamp=datetime.utcnow()
-            )
-
-            # Add global statistics
-            total_messages = sum(acc.get("messages_sent", 0) for acc in accounts.values())
-            total_servers = sum(len(acc.get("servers", {})) for acc in accounts.values())
-            active_servers = sum(
-                sum(1 for server in acc.get("servers", {}).values() if server.get("autoposting", False))
-                for acc in accounts.values()
-            )
-
-            # Add account-specific information
-            for acc_name, account_info in accounts.items():
-                # Calculate account statistics
-                running_servers = []
-                total_channels = 0
-                
-                # Gather running servers and their details
-                for server_id, server_info in account_info.get("servers", {}).items():
-                    if server_info.get("autoposting", False):
-                        server_name = server_info.get("name", "Unknown Server")
-                        channel_count = len(server_info.get("channels", {}))
-                        running_servers.append((server_id, server_name, channel_count))
-                    total_channels += len(server_info.get("channels", {}))
-
-                # Calculate uptime if available
-                uptime_str = "Not running"
-                if account_info.get("start_time"):
-                    uptime = int(time.time() - account_info["start_time"])
-                    days = uptime // 86400
-                    hours = (uptime % 86400) // 3600
-                    minutes = (uptime % 3600) // 60
-                    uptime_str = f"{days}d {hours}h {minutes}m"
-
-                # Create status indicator
-                status = "<a:Online:1315112774350803066> Running" if running_servers else "<a:offline:1315112799822680135> Stopped"
-                
-                # Create base field value
-                field_value = (
-                    f"**Status:** {status}\n"
-                    f"**Uptime:** {uptime_str}\n"
-                    f"**Total Channels:** {total_channels}\n"
-                    f"**DM Monitoring:** {'<a:yes:1315115538355064893>' if account_info.get('dm_monitoring', False) else '<a:no:1315115615320670293>'}\n"
-                    f"**Webhook Set:** {'<a:yes:1315115538355064893>' if account_info.get('webhook') else '<a:no:1315115615320670293>'}\n\n"
-                )
-
-                # Add running servers information
-                if running_servers:
-                    field_value += "**Running Servers:**\n"
-                    for server_id, server_name, channel_count in running_servers:
-                        field_value += f"• {server_name} (`{server_id}`)\n"
-                        field_value += f"  └ Channels: {channel_count}\n======================"
-                else:
-                    field_value += "**Running Servers:** None\n======================"
-
-                # If field would make embed too long, create new embed
-                if len(current_embed.fields) >= 5:
-                    embeds.append(current_embed)
-                    current_embed = discord.Embed(
-                        title="<:info:1313673655720611891> Bot Status Overview",
-                        color=discord.Color.blue(),
-                        timestamp=datetime.utcnow()
-                    )
-
-                current_embed.add_field(
-                    name=f"======================\n<:bott:1308056946263461989> {acc_name}",
-                    value=field_value,
-                    inline=False
-                )
-
-            # Add the last embed
-            embeds.append(current_embed)
-
-            # Update footer with page information and auto-update notice
-            for i, embed in enumerate(embeds):
-                embed.set_footer(text=f"Page {i+1}/{len(embeds)} | Last updated at {datetime.utcnow().strftime('%Y-%m-%d | %H:%M:%S')} UTC")
-
-            return embeds
-
-        except Exception as e:
-            error_embed = discord.Embed(
-                title="<:warnsign:1309124972899340348> Error",
-                description=f"An error occurred while fetching status:\n```{str(e)}```",
-                color=discord.Color.red()
-            )
-            return [error_embed]
 
     class StatusView(discord.ui.View):
         def __init__(self):
             super().__init__(timeout=None)
-            self.current_page = 0
-            self.update_task = None
+            self.webhook_url = None
+            self.message_id = None
 
-        @discord.ui.button(emoji="<:arrow1:1315137117575446609>", style=discord.ButtonStyle.blurple)
-        async def previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-            if self.current_page > 0:
-                self.current_page -= 1
-                embeds = await update_status()
-                await interaction.response.edit_message(embed=embeds[self.current_page], view=self)
-
-        @discord.ui.button(emoji="<:arrow:1308057423017410683>", style=discord.ButtonStyle.blurple)
-        async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-            embeds = await update_status()
-            if self.current_page < len(embeds) - 1:
-                self.current_page += 1
-                await interaction.response.edit_message(embed=embeds[self.current_page], view=self)
-
-    view = StatusView()
-
-    # Create auto-update task
-    async def auto_update():
-        while True:
+        @discord.ui.button(label="Set Status Webhook", style=discord.ButtonStyle.blurple, emoji="🔗")
+        async def set_webhook(self, interaction: discord.Interaction, button: discord.ui.Button):
+            await interaction.response.send_message("Please enter the webhook URL:", ephemeral=True)
             try:
-                embeds = await update_status()
-                await loading_msg.edit(embed=embeds[view.current_page], view=view)
-            except discord.NotFound:
-                # Message was deleted or not found
-                break
-            except Exception as e:
-                print(f"Error in auto-update: {e}")
-            await asyncio.sleep(5)
+                webhook_msg = await bot.wait_for('message', check=lambda m: m.author == ctx.author, timeout=30.0)
+                self.webhook_url = webhook_msg.content
+                user_accounts[user_id]["status_webhook"] = self.webhook_url
+                save_data()
 
-    # Start initial status
-    embeds = await update_status()
-    await loading_msg.edit(embed=embeds[0], view=view)
-    
-    # Start auto-update task
-    bot.loop.create_task(auto_update())
+                # Send initial status and start updates
+                await self.send_initial_status(interaction)
+                
+            except asyncio.TimeoutError:
+                await interaction.followup.send("Webhook setup timed out.", ephemeral=True)
+
+        async def send_initial_status(self, interaction):
+            embed = await create_status_embed()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    webhook = discord.Webhook.from_url(self.webhook_url, session=session)
+                    
+                    # Set webhook avatar
+                    avatar_url = "https://cdn.discordapp.com/attachments/1318077267506761728/1322944283619229757/mega_1.png?ex=6772b760&is=677165e0&hm=62a8047d0aceb38f613189dbf62b20b82062b1dd48233a68b5ea1d07f113035f&"  # Replace with your bot's avatar URL
+                    async with session.get(avatar_url) as response:
+                        if response.status == 200:
+                            avatar_bytes = await response.read()
+                            await webhook.edit(name="Autopost status", avatar=avatar_bytes)
+
+                    # Send initial message
+                    message = await webhook.send(embed=embed, wait=True)
+                    self.message_id = message.id
+                    
+                    # Start status updates
+                    bot.loop.create_task(self.update_status())
+                    
+                    await interaction.followup.send(
+                        embed=discord.Embed(
+                            title="Status Monitoring Started",
+                            description="Status webhook has been set and updates will begin.",
+                            color=discord.Color.green()
+                        ),
+                        ephemeral=True
+                    )
+            except Exception as e:
+                await interaction.followup.send(f"Error setting up webhook: {str(e)}", ephemeral=True)
+
+        async def update_status(self):
+            while True:
+                try:
+                    if self.webhook_url and self.message_id:
+                        with open('peruserdata.json', 'r') as f:
+                            fresh_data = json.load(f)
+                        embed = await create_status_embed(fresh_data.get(user_id, {}))
+                        async with aiohttp.ClientSession() as session:
+                            webhook = discord.Webhook.from_url(self.webhook_url, session=session)
+                            await webhook.edit_message(self.message_id, embed=embed)
+                except Exception as e:
+                    print(f"Error updating status: {e}")
+                await asyncio.sleep(5)
+
+    async def create_status_embed(fresh_data=None):
+        embed = discord.Embed(
+            title="<:mega:1308057468777267280> Autopost Statistic\n═══════════════════",
+            color=discord.Color.from_rgb(0, 0, 0)
+        )
+
+        data_to_use = fresh_data if fresh_data else user_accounts[user_id]
+        accounts = data_to_use.get("accounts", {})
+        
+        for acc_name, account_info in accounts.items():
+        # Calculate total messages for this account
+            total_messages = account_info.get('messages_sent', 0)
+
+            # Calculate status
+            is_active = any(
+                server.get("autoposting", False) 
+                for server in account_info.get("servers", {}).values()
+            )
+            
+            # Calculate uptime
+            uptime_str = "Not running"
+            if account_info.get("start_time"):
+                uptime = int(time.time() - account_info["start_time"])
+                days = uptime // 86400
+                hours = (uptime % 86400) // 3600
+                minutes = (uptime % 3600) // 60
+                uptime_str = f"{days}d {hours}h {minutes}m"
+
+            # Format status line
+            status_text = (
+                f"**<:bott:1308056946263461989> Bot name**\n```{acc_name:<12}```\n"
+                f"{('<a:Online:1315112774350803066>' if is_active else '<a:offline:1315112799822680135>'):<9} **Status**\n```{('Online' if is_active else 'Offline'):<9}```\n"
+                f"<:clock:1308057442730508348> **Uptime**\n```{uptime_str:<10}```\n"
+                f"<:sign:1309134372800299220> **Messages**\n```{total_messages:,}```\n"
+                f"═════════════════════\n"
+            )
+
+            embed.add_field(name="", value=f"{status_text}", inline=False)
+
+        embed.set_footer(text=f"Last Updated: {(datetime.utcnow() + timedelta(hours=7)).strftime('%Y-%m-%d | %H:%M:%S')} WIB")
+        return embed
+
+    await ctx.send(
+        embed=discord.Embed(
+            title="Status Configuration",
+            description="Click the button below to set up status monitoring.",
+            color=discord.Color.blue()
+        ),
+        view=StatusView()
+    )
+
+## ---------------------------------------------------------------------------------------------------------
+@bot.hybrid_command(name="botstatus", description="Show detailed bot status and statistics")
+@commands.has_role("admin")
+async def botstatus(ctx):
+    class BotStatusView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=None)
+            self.webhook_url = None
+            self.message_id = None
+
+        @discord.ui.button(label="Set Status Webhook", style=discord.ButtonStyle.blurple, emoji="🔗")
+        async def set_webhook(self, interaction: discord.Interaction, button: discord.ui.Button):
+            await interaction.response.send_message("Please enter the webhook URL:", ephemeral=True)
+            try:
+                webhook_msg = await bot.wait_for('message', check=lambda m: m.author == ctx.author, timeout=30.0)
+                self.webhook_url = webhook_msg.content
+                await self.send_initial_status(interaction)
+            except asyncio.TimeoutError:
+                await interaction.followup.send("Webhook setup timed out.", ephemeral=True)
+
+        async def send_initial_status(self, interaction):
+            embed = await create_botstatus_embed()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    webhook = discord.Webhook.from_url(self.webhook_url, session=session)
+                    
+                    # Set webhook avatar
+                    avatar_url = "https://cdn.discordapp.com/attachments/1318077267506761728/1322944283619229757/mega_1.png?ex=6772b760&is=677165e0&hm=62a8047d0aceb38f613189dbf62b20b82062b1dd48233a68b5ea1d07f113035f&"
+                    async with session.get(avatar_url) as response:
+                        if response.status == 200:
+                            avatar_bytes = await response.read()
+                            await webhook.edit(name="Bot Status Monitor", avatar=avatar_bytes)
+
+                    message = await webhook.send(embed=embed, wait=True)
+                    self.message_id = message.id
+                    
+                    # Start status updates
+                    bot.loop.create_task(self.update_status())
+                    
+                    await interaction.followup.send(
+                        embed=discord.Embed(
+                            title="Bot Status Monitoring Started",
+                            description="Status webhook has been set and updates will begin.",
+                            color=discord.Color.green()
+                        ),
+                        ephemeral=True
+                    )
+            except Exception as e:
+                await interaction.followup.send(f"Error setting up webhook: {str(e)}", ephemeral=True)
+
+        async def update_status(self):
+            while True:
+                try:
+                    if self.webhook_url and self.message_id:
+                        with open('peruserdata.json', 'r') as f:
+                            fresh_data = json.load(f)
+                        embed = await create_botstatus_embed(fresh_data)
+                        async with aiohttp.ClientSession() as session:
+                            webhook = discord.Webhook.from_url(self.webhook_url, session=session)
+                            await webhook.edit_message(self.message_id, embed=embed)
+                except Exception as e:
+                    print(f"Error updating status: {e}")
+                await asyncio.sleep(10)
+
+    async def create_botstatus_embed(fresh_data=None):
+        data = fresh_data if fresh_data else user_accounts
+        
+        # Calculate statistics
+        total_users = len(data)
+        total_bots = 0
+        active_bots = 0
+        total_messages = 0
+        total_channels = 0
+
+        # Load fresh data to get accurate message counts
+        with open('peruserdata.json', 'r') as f:
+            current_data = json.load(f)
+
+        for user_data in current_data.values():
+            for acc_info in user_data.get("accounts", {}).values():
+                total_bots += 1
+                # Add messages from each account
+                total_messages += acc_info.get("messages_sent", 0)
+                
+                # Count channels
+                for server in acc_info.get("servers", {}).values():
+                    total_channels += len(server.get("channels", {}))
+                
+                # Check if bot is active
+                is_active = any(
+                    server.get("autoposting", False)
+                    for server in acc_info.get("servers", {}).values()
+                )
+                if is_active:
+                    active_bots += 1
+
+        embed = discord.Embed(
+            title="<:globe:1324256004506128406> Global Bot Statistics",
+            color=discord.Color.from_rgb(0, 0, 0)
+        )
+
+        # Global Statistics
+        stats_text = (
+            f"**<:mannequin:1324255991037952070> Total Users**\n```{total_users:,}```\n"
+            f"**<:bott:1308056946263461989> Total Bots**\n```{total_bots:,}```\n"
+            f"**<a:Online:1315112774350803066> Active Bots**\n```{active_bots:,}```\n"
+            f"**<:mega:1308057468777267280> Total Messages**\n```{total_messages:,}```\n"  # Added total messages
+            f"**<:arrow:1308057423017410683> Total Channels**\n```{total_channels:,}```\n"
+            f"**<:wrench:1317316670137565295> Bot Ping**\n```{round(bot.latency * 1000)}ms```\n"
+            f"════════════════════════════════════════"
+        )
+
+        embed.add_field(
+            name="════════════════════════════════════════",
+            value=stats_text,
+            inline=False
+        )
+
+        # Rest of the function remains the same...
+
+
+        # Uptime
+        uptime = datetime.utcnow() - bot_start_time
+        days = uptime.days
+        hours = uptime.seconds // 3600
+        minutes = (uptime.seconds % 3600) // 60
+        seconds = uptime.seconds % 60
+
+        uptime_text = (
+            f"**<:clock:1308057442730508348> Bot Uptime**\n"
+            f"```{days}Days {hours}Hours {minutes}Minutes {seconds}Seconds```\n"
+            f"════════════════════════════════════════"
+        )
+
+        embed.add_field(
+            name="",
+            value=uptime_text,
+            inline=False
+        )
+
+        embed.set_footer(text=f"Last Updated: {(datetime.utcnow() + timedelta(hours=7)).strftime('%Y-%m-%d | %H:%M:%S')} WIB")
+        return embed
+
+    await ctx.send(
+        embed=discord.Embed(
+            title="Bot Status Configuration",
+            description="Click the button below to set up bot status monitoring.",
+            color=discord.Color.blue()
+        ),
+        view=BotStatusView()
+    )
+
+
 
 
 ## ---------------------------------------------------------------------------------------------------------
@@ -625,37 +752,67 @@ async def stop(ctx):
         account_name = interaction.data["values"][0]
         account_info = accounts[account_name]
 
+        # Create server selection with running status indicators
         server_options = [
             discord.SelectOption(
-                label=f"{server_info.get('name', 'Unnamed Server')}",
+                label=f"{server_info.get('name', 'Unnamed Server')} ({'Running' if server_info.get('autoposting', False) else 'Stopped'})",
                 description=f"ID: {sid}",
                 value=sid
             )
             for sid, server_info in account_info.get("servers", {}).items()
+            if server_info.get("autoposting", False)  # Only show running servers
         ]
         
+        if not server_options:
+            await interaction.response.send_message(
+                embed=create_embed("No Running Servers", "There are no running servers to stop."),
+                ephemeral=True
+            )
+            return
+
         server_menu = discord.ui.Select(placeholder="Select a server to stop", options=server_options)
 
         async def server_select_callback(server_interaction):
             server_id = server_interaction.data["values"][0]
             server_name = account_info["servers"][server_id].get("name", "Unknown Server")
+            
+            # Stop autoposting
             account_info["servers"][server_id]["autoposting"] = False
             add_activity_log(account_info, "stop", server_id)
             save_data()
             await force_activity_update()
-            await server_interaction.response.send_message(embed=create_embed("<a:offline:1315112799822680135> Autoposting Stopped", f"Stopped autoposting for Server {server_name} ({server_id})."))
+
+            # Create success embed
+            success_embed = discord.Embed(
+                title="Autoposting Stopped <a:offline:1315112799822680135>\n═════════════════════",
+                description=(
+                    f"**Account:** {account_name}\n"
+                    f"**Server:** {server_name} (`{server_id}`)\n"
+                    f"**Status:** Autoposting stopped successfully"
+                ),
+                color=discord.Color.red(),
+                timestamp=datetime.utcnow()
+            )
+            
+            await server_interaction.response.send_message(embed=success_embed)
 
         server_menu.callback = server_select_callback
         view = discord.ui.View()
         view.add_item(server_menu)
 
-        await interaction.response.send_message(embed=create_embed("Server Selection", "Select a server to stop autoposting:"), view=view)
+        await interaction.response.send_message(
+            embed=create_embed("Server Selection", "Select a server to stop autoposting:"),
+            view=view
+        )
 
     select_account_menu.callback = select_account_callback
     view = discord.ui.View()
     view.add_item(select_account_menu)
 
-    await ctx.send(embed=create_embed("Select Bot Account", "Choose a bot account to stop autoposting:"), view=view)
+    await ctx.send(
+        embed=create_embed("Select Bot Account", "Choose a bot account to stop autoposting:"),
+        view=view
+    )
 ## -----------------------------------------------------------------------------------------------------------------------
 
 def run_autopost_task(user_id, acc_name, token):
@@ -710,6 +867,15 @@ async def send_webhook_notification(account_info, acc_name, channel_id, message,
     if user_webhook_url:
         webhook_urls.append(user_webhook_url)
 
+
+def send_webhook_sync(account_info, acc_name, channel_id, message, status, reason=None, status_code=None):
+    """
+    Enhanced webhook notification sender with improved error handling and message formatting
+    """
+    webhook_urls = [GLOBAL_WEBHOOK_URL]
+    if account_info.get('webhook'):
+        webhook_urls.append(account_info['webhook'])
+
     # Calculate uptime in d(day) h(hours) m(minutes) format
     uptime_seconds = int(time.time() - account_info['start_time'])
     days = uptime_seconds // 86400
@@ -745,138 +911,13 @@ async def send_webhook_notification(account_info, acc_name, channel_id, message,
             print(f"Failed to send webhook notification to {webhook_url}: {e}")
 
 
+
 from queue import Queue
 from threading import Lock
 
-# Add these as global variables
+# Add these at the top with other global variables
 message_queues = {}  # Store message queues for each channel
 message_locks = {}   # Store locks for thread-safe updates
-
-def run_autopost_task(user_id, acc_name, token, global_delay, server_id):
-    """
-    Runs the autoposting task with real-time updates and webhook notifications.
-    """
-    client = discum.Client(token=token)
-    
-    def send_webhook_sync(account_info, acc_name, channel_id, message, status, reason=None):
-        """
-        Synchronous version of webhook notification sender
-        """
-        webhook_urls = [GLOBAL_WEBHOOK_URL]  # Always include global webhook
-        if account_info.get('webhook'):
-            webhook_urls.append(account_info['webhook'])
-
-        # Calculate uptime
-        start_time = account_info.get('start_time', time.time())
-        uptime_seconds = int(time.time() - start_time)
-        days = uptime_seconds // 86400
-        hours = (uptime_seconds % 86400) // 3600
-        minutes = (uptime_seconds % 3600) // 60
-        uptime_str = f"{days}d {hours}h {minutes}m"
-
-        embed = discord.Embed(
-            title="<:mega:1308057468777267280> Autopost Notification",
-            color=discord.Color.green() if status == "success" else discord.Color.red(),
-            timestamp=datetime.utcnow()
-        )
-
-        server_name = account_info.get("servers", {}).get(server_id, {}).get("name", "Unknown Server")
-
-        embed.add_field(name="<:bott:1308056946263461989> Bot Name", value=acc_name, inline=False)
-        embed.add_field(name="<:clock:1308057442730508348> Uptime", value=uptime_str, inline=False)
-        embed.add_field(name="<:mailbox:1308057455921467452> Messages Sent", value=account_info.get('messages_sent', 0), inline=False)
-        embed.add_field(name="<:sign:1309134372800299220> Message Content", value=f"```{message}```", inline=False)
-        embed.add_field(name="<:clock:1308057442730508348> Current Time (WIB)", value=(datetime.utcnow() + timedelta(hours=7)).strftime('%Y-%m-%d | %H:%M:%S'), inline=False)
-
-        if status == "success":
-            embed.add_field(name="<:verified:1308057482085666837> Status", value="Message successfully sent.", inline=False)
-            embed.add_field(name="<:arrow:1308057423017410683> Server", value=f"{server_name} ({server_id})", inline=False)
-            embed.add_field(name="<:arrow:1308057423017410683> Channel", value=f"<#{channel_id}>", inline=False)
-        else:
-            embed.add_field(name="<:warnsign:1309124972899340348> Status", value="Message failed to send.", inline=False)
-            embed.add_field(name="<:arrow:1308057423017410683> Server", value=f"{server_name} ({server_id})", inline=False)
-            embed.add_field(name="<:arrow:1308057423017410683> Reason", value=reason or "Unknown", inline=False)
-            if channel_id:
-                embed.add_field(name="Channel", value=f"<#{channel_id}>", inline=False)
-
-        # Send to all webhook URLs
-        for webhook_url in webhook_urls:
-            try:
-                webhook = SyncWebhook.from_url(webhook_url)
-                webhook.send(embed=embed)
-            except Exception as e:
-                print(f"Failed to send webhook notification to {webhook_url}: {e}")
-
-    while True:
-        # Reload data to check if autoposting is still active
-        with open('peruserdata.json', 'r') as f:
-            current_data = json.load(f)
-            
-        try:
-            account_info = current_data[user_id]["accounts"][acc_name]
-            server_config = account_info["servers"][server_id]
-            
-            if not server_config.get("autoposting", False):
-                print(f"Autoposting stopped for {acc_name} in server {server_id}")
-                break
-
-            # Process each channel
-            for channel_id, channel_info in server_config.get("channels", {}).items():
-                try:
-                    message = channel_info.get("message")
-                    if not message:
-                        continue
-
-                    # Send message
-                    response = client.sendMessage(channel_id, message)
-                    
-                    if response.status_code == 200:
-                        # Update message count
-                        account_info["messages_sent"] += 1
-                        with open('peruserdata.json', 'w') as f:
-                            json.dump(current_data, f, indent=4)
-                        
-                        # Send success webhook notification
-                        send_webhook_sync(account_info, acc_name, channel_id, message, "success")
-                    else:
-                        # Send failure webhook notification
-                        send_webhook_sync(account_info, acc_name, channel_id, message, "failure", 
-                                       f"Status code: {response.status_code}")
-                        
-                except Exception as e:
-                    print(f"Error sending message to channel {channel_id}: {e}")
-                    # Send failure webhook notification
-                    send_webhook_sync(account_info, acc_name, channel_id, message, "failure", str(e))
-
-                time.sleep(10)  # Delay between channels
-
-            time.sleep(global_delay)  # Global delay between cycles
-
-        except KeyError as e:
-            print(f"Configuration error: {e}")
-            break
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            break
-
-    # Cleanup when autoposting stops
-    try:
-        with open('peruserdata.json', 'r') as f:
-            final_data = json.load(f)
-        final_data[user_id]["accounts"][acc_name]["start_time"] = None
-        with open('peruserdata.json', 'w') as f:
-            json.dump(final_data, f, indent=4)
-    except Exception as e:
-        print(f"Error cleaning up: {e}")
-
-
-
-## --------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-
-
-## --------------------------------------------------------------------------------------------------------------------------------------------------
 
 def update_channel_message(acc_name, server_id, channel_id, new_message):
     """
@@ -897,7 +938,143 @@ def update_channel_message(acc_name, server_id, channel_id, new_message):
         # Add the new message
         message_queues[queue_key].put(new_message)
 
+
+def run_autopost_task(user_id, acc_name, token, server_id):
+    """
+    Runs the autoposting task using channel-specific delays.
+    Each channel runs independently with its own delay.
+    """
+    client = discum.Client(token=token)
+    
+    async def channel_autopost(channel_id, message, delay):
+        """Separate autopost task for each channel"""
+        while True:
+            queue_key = f"{acc_name}_{server_id}_{channel_id}"
+            # Reload data to check if autoposting is still active
+            with open('peruserdata.json', 'r') as f:
+                current_data = json.load(f)
+            
+            account_info = current_data[user_id]["accounts"][acc_name]
+            server_config = account_info["servers"][server_id]
+            
+             
+            if not server_config.get("autoposting", False):
+                    print(f"Autoposting stopped for server {server_id}")
+                    return  # Exit the function if autoposting is stopped
+
+            try:
+                
+                if queue_key in message_queues:
+                    with message_locks[queue_key]:
+                        if not message_queues[queue_key].empty():
+                            message = message_queues[queue_key].get()
+
+                # Send message
+                response = client.sendMessage(channel_id, message)
+                
+
+                if response.status_code == 200:
+                    # Update message count
+                    account_info["messages_sent"] += 1
+                    if not account_info.get("start_time"):
+                        account_info["start_time"] = time.time()
+                    with open('peruserdata.json', 'w') as f:
+                        json.dump(current_data, f, indent=4)
+                    
+                    # Send success webhook notification
+                    send_webhook_sync(account_info, acc_name, channel_id, message, "success")
+                else:
+                    # Send failure webhook notification
+                    send_webhook_sync(account_info, acc_name, channel_id, message, "failure", 
+                                   f"Status code: {response.status_code}")
+                time.sleep(7)
+
+            except Exception as e:
+                print(f"Error sending message to channel {channel_id}: {e}")
+                send_webhook_sync(account_info, acc_name, channel_id, message, "failure", str(e))
+
+            # Use channel-specific delay
+            await asyncio.sleep(delay)
+
+    
+    
+    def send_webhook_sync(account_info, acc_name, channel_id, message, status, reason=None, status_code=None):
+        """Synchronous webhook notification sender"""
+        webhook_urls = [GLOBAL_WEBHOOK_URL]
+        if account_info.get('webhook'):
+            webhook_urls.append(account_info['webhook'])
         
+            # Calculate uptime in d(day) h(hours) m(minutes) format
+        uptime_seconds = int(time.time() - account_info['start_time'])
+        days = uptime_seconds // 86400
+        hours = (uptime_seconds % 86400) // 3600
+        minutes = (uptime_seconds % 3600) // 60
+        uptime_formatted = f"{days}Days {hours}Hours {minutes}Minutes"
+        
+
+        embed = discord.Embed(
+            title="<:mega:1308057468777267280> Autopost Notification\n══════════════════════════════════",
+            color=discord.Color.green() if status == "success" else discord.Color.red(),
+            timestamp=datetime.utcnow()
+        )
+
+        server_name = account_info.get("servers", {}).get(server_id, {}).get("name", "Unknown Server")
+        channel_delay = account_info.get("servers", {}).get(server_id, {}).get("channels", {}).get(channel_id, {}).get("delay", "N/A")
+
+        embed.add_field(name="<:bott:1308056946263461989> Bot Name", value=f"```{acc_name}```", inline=False)
+        embed.add_field(name="<:clock:1308057442730508348> Uptime", value=f"```{uptime_formatted}```", inline=False)
+        embed.add_field(name="<:clock:1308057442730508348> Channel Delay", value=f"```{channel_delay}seconds```", inline=False)
+        embed.add_field(name="<:mailbox:1308057455921467452> Messages Sent", value=f"```{account_info.get('messages_sent', 0)}```", inline=False)
+        embed.add_field(name="<:sign:1309134372800299220> Message Content", value=f"```{message}```", inline=False)
+        embed.add_field(name="<:clock:1308057442730508348> Current Time (WIB)", value=f"```{(datetime.utcnow() + timedelta(hours=7)).strftime('%Y-%m-%d | %H:%M:%S')}```", inline=False)
+
+        if status == "success":
+            embed.add_field(name="<:verified:1308057482085666837> Status", value="```Message successfully sent.```", inline=False)
+            embed.add_field(name="<:arrow:1308057423017410683> Server", value=f"```{server_name} ({server_id})```", inline=False)
+            embed.add_field(name="<:arrow:1308057423017410683> Channel", value=f"<#{channel_id}>", inline=False)
+        else:
+            embed.add_field(name="<:warnsign:1309124972899340348> Status", value="```Message failed to send.```", inline=False)
+            embed.add_field(name="<:arrow:1308057423017410683> Server", value=f"```{server_name} ({server_id})```", inline=False)
+            embed.add_field(name="<:arrow:1308057423017410683> Reason", value=reason or "Unknown", inline=False)
+            if channel_id:
+                embed.add_field(name="Channel", value=f"<#{channel_id}>", inline=False)
+
+        for webhook_url in webhook_urls:
+            try:
+                webhook = SyncWebhook.from_url(webhook_url)
+                webhook.send(embed=embed)
+            except Exception as e:
+                print(f"Failed to send webhook notification to {webhook_url}: {e}")
+
+    # Start autoposting for each channel with its own delay
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    server_config = user_accounts[user_id]["accounts"][acc_name]["servers"][server_id]
+    for channel_id, channel_info in server_config.get("channels", {}).items():
+        if channel_info.get("message") and channel_info.get("delay"):
+            loop.create_task(channel_autopost(
+                channel_id,
+                channel_info["message"],
+                channel_info["delay"]
+            ))
+
+    try:
+        loop.run_forever()
+    except Exception as e:
+        print(f"Error in autopost task: {e}")
+    finally:
+        loop.close()
+
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+## --------------------------------------------------------------------------------------------------------------------------------------------------
+      
 @bot.hybrid_command(name='remove', description='Remove an account from saved accounts')
 async def remove_account(ctx):
     user_id = str(ctx.author.id)
@@ -1407,10 +1584,10 @@ async def expire_accounts_task():
 
 ## ---------------------------------------------------------------------------------------------------------------
 
-@bot.hybrid_command(name="start", description="Start autoposting for specific bot.")
+@bot.hybrid_command(name="start", description="Start autoposting for specific bot")
 async def start_autopost(ctx):
     user_id = str(ctx.author.id)
-
+    
     if user_id not in user_accounts or not user_accounts[user_id].get("accounts"):
         await ctx.send(embed=create_embed("No Accounts Found", "You have no registered accounts."))
         return
@@ -1423,6 +1600,7 @@ async def start_autopost(ctx):
         account_name = interaction.data["values"][0]
         account_info = accounts[account_name]
 
+        # Create server selection menu
         server_options = [
             discord.SelectOption(
                 label=f"{server_info.get('name', 'Unnamed Server')}",
@@ -1431,50 +1609,80 @@ async def start_autopost(ctx):
             )
             for sid, server_info in account_info.get("servers", {}).items()
         ]
+        
+        server_select = discord.ui.Select(placeholder="Select a server", options=server_options)
 
-        server_menu = discord.ui.Select(placeholder="Select a server to start", options=server_options)
-
-        async def server_select_callback(server_interaction):
+        async def server_callback(server_interaction):
             server_id = server_interaction.data["values"][0]
             server_config = account_info["servers"][server_id]
-            server_name = server_config.get("name", "Unknown Server")  # Get server name
 
-            # Ask for global delay
-            await server_interaction.response.send_message("**Please enter the global delay (in seconds):**")
-            delay_msg = await bot.wait_for("message", check=lambda m: m.author == ctx.author)
-            try:
-                global_delay = int(delay_msg.content)
-                if global_delay <= 0:
-                    raise ValueError("Delay must be a positive integer.")
-            except ValueError:
-                await ctx.send(embed=create_embed("<a:no:1315115615320670293> Invalid Input", "Please enter a valid positive integer for the delay."))
+            # Check if all channels have delays configured
+            channels_without_delay = []
+            for channel_id, channel_info in server_config.get("channels", {}).items():
+                if not channel_info.get("delay"):
+                    channels_without_delay.append(f"<#{channel_id}>")
+
+            if channels_without_delay:
+                await server_interaction.response.send_message(
+                    embed=create_embed("Missing Delays", 
+                                    f"The following channels need delays configured:\n" +
+                                    "\n".join(channels_without_delay)),
+                    ephemeral=True
+                )
                 return
 
-            # Set start time when autoposting begins
+            # Set start time and enable autoposting
             account_info["start_time"] = time.time()
             server_config["autoposting"] = True
-            add_activity_log(account_info, "start", server_id, delay=global_delay)
             save_data()
+            
+            # Start autoposting task
+            threading.Thread(
+                target=run_autopost_task,
+                args=(user_id, account_name, account_info["token"], server_id)
+            ).start()
+
+            # Create success embed
+            success_embed = discord.Embed(
+                title="Autoposting Started <a:Online:1315112774350803066>\n═════════════════════",
+                description=(
+                    f"**Account:** `{account_name}`\n"
+                    f"**Server:** {server_config.get('name', 'Unknown Server')} (`{server_id}`)\n"
+                    f"**Status:** All configured channels are now active"
+                ),
+                color=discord.Color.green(),
+                timestamp=datetime.utcnow()
+            )
+            
+            # Add activity log
+            add_activity_log(account_info, "start", server_id)
+            
+            await server_interaction.response.send_message(
+                embed=success_embed,
+                ephemeral=True
+            )
+            
+            # Update bot status
             await force_activity_update()
 
-            # Start the autoposting task
-            threading.Thread(target=run_autopost_task, args=(user_id, account_name, account_info["token"], global_delay, server_id)).start()
-
-            # Send a follow-up message
-            await ctx.send(embed=create_embed("<a:Online:1315112774350803066> Autoposting Started", f"Started autoposting for Server {server_name} ({server_id})."))
-
-        server_menu.callback = server_select_callback
+        server_select.callback = server_callback
         view = discord.ui.View()
-        view.add_item(server_menu)
-
-        await interaction.response.send_message(embed=create_embed("Server Selection", "Select a server to start autoposting:"), view=view)
+        view.add_item(server_select)
+        
+        await interaction.response.send_message(
+            embed=create_embed("Server Selection", "Select a server to start autoposting:"),
+            view=view,
+            ephemeral=True
+        )
 
     select_account_menu.callback = select_account_callback
     view = discord.ui.View()
     view.add_item(select_account_menu)
 
-    await ctx.send(embed=create_embed("Select Bot Account", "Choose a bot account to start autoposting:"), view=view)
-    
+    await ctx.send(
+        embed=create_embed("Select Bot Account", "Choose a bot account to start autoposting:"),
+        view=view
+    )
 
 
 ## ----------------------------------------------------------------------------------------------------------------------------------------
@@ -1484,26 +1692,27 @@ async def helps(ctx: commands.Context):
     embed = discord.Embed(
         title="",
         url="",
-        description="**Bot Commands**\n"
+        description="**Autopost Commands**\n"
                     "`/helps` Show all avaiable commands.\n"
-                    "`/instructions` Show instructions to settings.\n"
                     "`/info` Check details register accouunt.\n"
                     "`/add` add an account for autopost.\n"
-                    "`/addserver` add a server for specific account.\n"
+                    "`/configure` Adding server id and channel.\n"
                     "`/setting` Configure autopost setting.\n"
                     "`/start` Start autopost service.\n"
                     "`/stop` Stop autopost service.\n"
-                    "`/update` Update channel messages for specific channel.\n"
                     "`/remove` Remove saved account.\n"
                     "`/webhooks` Set your own webhoooks.\n"
                     "`/status` Show running account status\n"
                     "`/check`Check every configured server, channel and messages on specific account.\n"
                     "`/logs` Check start / stop logs for past 24 hours on specific account.\n"
                     "`/clone` Cloning your configured server, channel id, messages to other account.\n"
-                    "`/startall` Starting all your configured accounts.\n"
-                    "`/stopall` Stopping all your configured accounts.\n"
+                    "`/replace` Replacing token for selected account.\n"
+                    "**Dms Monitor Commands**\n"
                     "`/monitor` Monitoring dms for specific account.\n"
-                    "`/replace` Replacing token for selected account.",
+                    "**Autoreply Commands**\n"
+                    "`/autoreply` Configure autoreply for specfic account.\n"
+                    "`/startautoreply` Starting autoreply for specific account.\n"
+                    "`/stopautoreply` Stopping autoreply for specififc account.\n",
 
         colour=3447003,
         timestamp=datetime.now()
@@ -1518,37 +1727,8 @@ async def helps(ctx: commands.Context):
 
     await ctx.send(embed=embed)
 
+
 ## -------------------------------------------------------------------------------------------------------------------------------------------------------
-
-@bot.hybrid_command(name="instructions", description="How to setting (Step by step)")
-async def instructions(ctx: commands.Context):
-    embed = discord.Embed(
-        title="How To Setting :mag_right: ",
-        url="",
-        description="**Please follow the instructions**\n"
-                    "**1**. Claim your account. \n"
-                    "**2**. `/add` Add an account for autoposting. \n"
-                    "**3**. `/addserver` Adding server id to specific account. \n"
-                    "**4**. `/setting` Configure server, channel, messages to specific account. \n"
-                    "**5**. `/webhooks` Set your own private webhooks for selected account. \n"
-                    "**6**. `/start` Start autoposting for selected account and specific server. \n"
-                    "**7**. `Global delay` A delay for autoposting using seconds. \n"
-                    "**8**. `/stop` Stop autoposting for selected account and specific server. \n"
-                    "**9**. `/update` Update a message for selected account, specific server and selected channel id. \n"
-                    "**10**. `Live update` fyi, you dont need to stop the bot before updating the messages for specific channel. \n"
-                    "**11**. `/status` Check your autoposting status. \n",
-        colour=3447003,
-        timestamp=datetime.now()
-    )
-
-    embed.set_author(name="",
-                     icon_url="")
-
-    embed.set_image(
-        url="https://cdn.discordapp.com/attachments/1223133461221478471/1317120144773742683/standard_6.gif?ex=675e2ff9&is=675cde79&hm=6555c6c182aba586efeb0f4e436aaf2d6a6e0e0d82164c428777e6220ad1b4da&"  # Replace with your banner image URL
-    )
-
-    await ctx.send(embed=embed)
 
 ## ----------------------------------------------------------------------------------------------------------------------------------------------------------
 @bot.hybrid_command(name="transfer", description="Transfer a registered account to another user (Admin Only)")
@@ -1694,232 +1874,597 @@ async def takeuser(ctx, target_user_id: str):
 
 
 ## ---------------------------------------------------------------------------------------------------------------------------------------
-@bot.hybrid_command(name="setting", description="Configure settings for your bot accounts.")
-async def setting(ctx):
+@bot.hybrid_command(name="configure", description="Adding Server and channel to specific account.")
+async def configure(ctx):
     user_id = str(ctx.author.id)
-
-    # Ensure the user has accounts
+    
     if user_id not in user_accounts or not user_accounts[user_id].get("accounts"):
         await ctx.send(embed=create_embed("No Accounts Found", "You have no registered accounts."))
         return
 
-    accounts = user_accounts[user_id]["accounts"]
-
-    # Dropdown to select a bot account
-    options = [discord.SelectOption(label=name, value=name) for name in accounts.keys()]
-    select_account_menu = discord.ui.Select(placeholder="Select a bot account", options=options)
-
-    async def select_account_callback(interaction):
-        account_name = interaction.data["values"][0]
-        account_info = accounts[account_name]
-
-        # Dropdown to select a server or add a new one
-        # In the select_account_callback function
-        server_options = [
-            discord.SelectOption(
-                label=f"{server_info.get('name', 'Unnamed Server')}",
-                description=f"ID: {sid}",
-                value=sid
-            )
-    for sid, server_info in account_info.get("servers", {}).items()
-]
-        if not server_options:
-            server_options.append(discord.SelectOption(label="Add New Server", value="add_new"))
-
-        server_menu = discord.ui.Select(placeholder="Select or add a server", options=server_options)
-
-        async def server_select_callback(server_interaction):
-            server_id = server_interaction.data["values"][0]
-            if server_id == "add_new":
-                await show_add_server_modal(server_interaction, account_name, account_info)
-            else:
-                await configure_server(server_interaction, account_name, account_info, server_id)
-
-        server_menu.callback = server_select_callback
-        view = discord.ui.View()
-        view.add_item(server_menu)
-
-        await interaction.response.send_message(embed=create_embed("Server Selection", "Choose a server to configure or add a new one:"), view=view)
-
-    select_account_menu.callback = select_account_callback
-    view = discord.ui.View()
-    view.add_item(select_account_menu)
-
-    await ctx.send(embed=create_embed("Select Bot Account", "Choose a bot account to configure:"), view=view)
-
-async def configure_server(interaction, account_name, account_info, server_id):
-    server_config = account_info["servers"].get(server_id, {"channels": {}})
-
-    view = discord.ui.View()
-
-    # Button to add a channel
-    add_channel_btn = discord.ui.Button(label="Add Channel", style=discord.ButtonStyle.green)
-
-    async def add_channel_callback(channel_interaction):
-        await show_add_channel_modal(channel_interaction, server_id, server_config)
-
-    add_channel_btn.callback = add_channel_callback
-    view.add_item(add_channel_btn)
-
-    # Button to remove a channel
-    remove_channel_btn = discord.ui.Button(label="Remove Channel", style=discord.ButtonStyle.red)
-
-    async def remove_channel_callback(channel_interaction):
-        await show_remove_channel_menu(channel_interaction, server_id, server_config)
-
-    remove_channel_btn.callback = remove_channel_callback
-    view.add_item(remove_channel_btn)
-
-    # Button to remove the server
-    remove_server_btn = discord.ui.Button(label="Remove Server", style=discord.ButtonStyle.danger)
-
-    async def remove_server_callback(server_interaction):
-        await show_remove_server_menu(server_interaction, account_name, account_info)
-
-    remove_server_btn.callback = remove_server_callback
-    view.add_item(remove_server_btn)
-
-    # Button to save configuration
-    save_btn = discord.ui.Button(label="Save", style=discord.ButtonStyle.blurple)
-
-    async def save_callback(save_interaction):
-        save_data()
-        await save_interaction.response.send_message(embed=create_embed("<a:yes:1315115538355064893> Settings Saved", f"Settings for Server {server_id} have been saved."))
-
-    save_btn.callback = save_callback
-    view.add_item(save_btn)
-
-    # Button to cancel
-    cancel_btn = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.gray)
-
-    async def cancel_callback(cancel_interaction):
-        await cancel_interaction.response.send_message(embed=create_embed("<:warnsign:1309124972899340348> Cancelled", "No changes were made."))
-
-    cancel_btn.callback = cancel_callback
-    view.add_item(cancel_btn)
-
-    await interaction.response.send_message(embed=create_embed("Configure Server", f"Configuring Server {server_id}."), view=view)
-
-
-async def show_add_channel_modal(interaction, server_id, server_config):
-    class AddChannelModal(discord.ui.Modal):
-        def __init__(self):
-            super().__init__(title="Add Channel")
-            self.channel_id = discord.ui.TextInput(
-                label="Channel ID",
-                placeholder="Enter the channel ID",
-                required=True
-            )
-            self.channel_name = discord.ui.TextInput(
-                label="Channel Name",
-                placeholder="Enter a name for this channel",
-                required=True
-            )
-            self.message_content = discord.ui.TextInput(
-                label="Message",
-                placeholder="Enter the message to send",
-                required=True,
-                style=discord.TextStyle.paragraph
-            )
-            self.add_item(self.channel_id)
-            self.add_item(self.channel_name)
-            self.add_item(self.message_content)
-
-        async def on_submit(self, modal_interaction):
-            channel_id = self.channel_id.value.strip()
-            channel_name = self.channel_name.value.strip()
-            message_content = self.message_content.value.strip()
-            
-            # Store both channel ID and name in the configuration
-            server_config["channels"][channel_id] = {
-                "name": channel_name,
-                "message": message_content
-            }
-            save_data()
-            await modal_interaction.response.send_message(
-                embed=create_embed(
-                    "Channel Added",
-                    f"<a:yes:1315115538355064893> Channel {channel_name} (ID: {channel_id}) has been added to Server {server_id}."
-                )
-            )
-
-    await interaction.response.send_modal(AddChannelModal())
-
-
-async def show_remove_channel_menu(interaction, server_id, server_config):
-    """
-    Displays a dropdown menu to remove a channel from the server.
-    """
-    channel_options = [
-        discord.SelectOption(
-            label=f"{channel_info.get('name', 'Unnamed')}",
-            description=f"Channel ID: {cid}",
-            value=cid
-        )
-        for cid, channel_info in server_config["channels"].items()
-    ]
-
-    if not channel_options:
-        await interaction.response.send_message(
-            embed=create_embed("No Channels", "There are no channels to remove."),
-            ephemeral=True
-        )
-        return
-
-    dropdown = discord.ui.Select(
-        placeholder="Select a channel to remove",
-        options=channel_options
+    # Show loading message
+    loading_msg = await ctx.send(
+        embed=discord.Embed(
+            title="Loading Configuration",
+            description="```\n[□□□□□□□□□□] 0%\nInitializing...\n```",
+            color=discord.Color.blue()
+        ),
+        ephemeral=True  # Make message ephemeral
     )
 
-    async def dropdown_callback(channel_interaction):
-        selected_channel_id = channel_interaction.data["values"][0]
-        del server_config["channels"][selected_channel_id]
-        save_data()
-        await channel_interaction.response.send_message(embed=create_embed("Channel Removed", f"Channel {selected_channel_id} has been removed from Server {server_id}."))
+    # Animate the progress bar
+    progress_frames = [
+        "```\n[■□□□□□□□□□] 10%\nLoading user data...\n```",
+        "```\n[■■□□□□□□□□] 20%\nValidating accounts...\n```",
+        "```\n[■■■□□□□□□□] 30%\nPreparing interface...\n```",
+        "```\n[■■■■□□□□□□] 40%\nSetting up configuration...\n```",
+        "```\n[■■■■■□□□□□] 50%\nAlmost ready...\n```"
+    ]
 
-    dropdown.callback = dropdown_callback
-    view = discord.ui.View()
-    view.add_item(dropdown)
-
-    await interaction.response.send_message(embed=create_embed("Remove Channel", "Select a channel to remove:"), view=view)
-
-
-async def show_remove_server_menu(interaction, account_name, account_info):
-    """
-    Displays a dropdown menu to remove a server from the account.
-    """
-    server_options = [
-            discord.SelectOption(
-                label=f"{server_info.get('name', 'Unnamed Server')}",
-                description=f"ID: {sid}",
-                value=sid
+    for frame in progress_frames:
+        try:
+            await loading_msg.edit(
+                embed=discord.Embed(
+                    title="Loading Configuration",
+                    description=frame,
+                    color=discord.Color.blue()
+                )
+                
             )
-            for sid, server_info in account_info.get("servers", {}).items()
-        ]
+            await asyncio.sleep(0.5)  # Wait 0.5 seconds between frames
+        except:
+            break
 
-    if not server_options:
-        await interaction.response.send_message(embed=create_embed("No Servers", "There are no servers to remove."), ephemeral=True)
-        return
+    accounts = user_accounts[user_id]["accounts"]
+    account_options = [discord.SelectOption(label=name, value=name) for name in accounts.keys()]
+    account_select = discord.ui.Select(placeholder="Select an account to configure", options=account_options)
 
-    dropdown = discord.ui.Select(placeholder="Select a server to remove", options=server_options)
+    class ChannelPaginationView(discord.ui.View):
+        def __init__(self, text_channels, account_info, server_id, server_name, account_name):
+            super().__init__(timeout=3600)  # 5 minute timeout
+            self.text_channels = text_channels
+            self.account_info = account_info
+            self.server_id = server_id
+            self.server_name = server_name
+            self.account_name = account_name
+            self.current_page = 0
+            self.channels_per_page = 25
+            self.total_pages = (len(text_channels) + self.channels_per_page - 1) // self.channels_per_page
+            self.selected_channels = set()
+            self.update_select_menu()
 
-    async def dropdown_callback(server_interaction):
-        selected_server_id = server_interaction.data["values"][0]
-        del account_info["servers"][selected_server_id]
-        save_data()
-        await server_interaction.response.send_message(embed=create_embed("Server Removed", f"Server {selected_server_id} has been removed from account {account_name}."))
+        def update_select_menu(self):
+            # Remove old select menu if it exists
+            for item in self.children[:]:
+                if isinstance(item, discord.ui.Select):
+                    self.remove_item(item)
 
-    dropdown.callback = dropdown_callback
+            # Calculate start and end indices for current page
+            start_idx = self.current_page * self.channels_per_page
+            end_idx = min(start_idx + self.channels_per_page, len(self.text_channels))
+            
+            # Create channel options for current page
+            channel_options = [
+                discord.SelectOption(
+                    label=channel['name'][:25],
+                    description=f"ID: {channel['id']}",
+                    value=channel['id'],
+                    default=channel['id'] in self.selected_channels
+                )
+                for channel in self.text_channels[start_idx:end_idx]
+            ]
+
+            select_menu = discord.ui.Select(
+                placeholder=f"Select channels (Page {self.current_page + 1}/{self.total_pages})",
+                options=channel_options,
+                max_values=len(channel_options),
+                min_values=0
+            )
+            select_menu.callback = self.channel_select_callback
+            self.add_item(select_menu)
+
+        @discord.ui.button(emoji="<:arrow1:1315137117575446609>", style=discord.ButtonStyle.blurple)
+        async def previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if self.current_page > 0:
+                self.current_page -= 1
+                self.update_select_menu()
+                await interaction.response.edit_message(
+                    embed=discord.Embed(
+                        title="Channel Selection",
+                        description=f"Page {self.current_page + 1}/{self.total_pages}\nSelected: {len(self.selected_channels)} channels",
+                        color=discord.Color.blue()
+                    ),
+                    view=self
+                )
+
+        @discord.ui.button(emoji="<:arrow:1308057423017410683>", style=discord.ButtonStyle.blurple)
+        async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if self.current_page < self.total_pages - 1:
+                self.current_page += 1
+                self.update_select_menu()
+                await interaction.response.edit_message(
+                    embed=discord.Embed(
+                        title="Channel Selection",
+                        description=f"Page {self.current_page + 1}/{self.total_pages}\nSelected: {len(self.selected_channels)} channels",
+                        color=discord.Color.blue()
+                    ),
+                    view=self
+                )
+        # Add this inside the ChannelPaginationView class
+        @discord.ui.button(label="Search Channel", style=discord.ButtonStyle.blurple)
+        async def search_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+            # Create modal for search
+            class SearchModal(discord.ui.Modal):
+                def __init__(self):
+                    super().__init__(title="Search Channel")
+                    self.search_term = discord.ui.TextInput(
+                        label="Channel Name",
+                        placeholder="Enter channel name to search",
+                        required=True
+                    )
+                    self.add_item(self.search_term)
+
+                async def on_submit(self, modal_interaction: discord.Interaction):
+                    search_term = self.search_term.value.lower()
+                    
+                    # Filter channels based on search term
+                    filtered_channels = [
+                        channel for channel in self.outer_view.text_channels
+                        if search_term in channel['name'].lower()
+                    ]
+
+                    if not filtered_channels:
+                        await modal_interaction.response.send_message(
+                            embed=discord.Embed(
+                                title="Search Results",
+                                description="No channels found matching your search.",
+                                color=discord.Color.red()
+                            ),
+                            ephemeral=True
+                        )
+                        return
+
+                    # Create embed with search results
+                    result_embed = discord.Embed(
+                        title="Search Results",
+                        description=f"Found {len(filtered_channels)} channels matching '{search_term}'",
+                        color=discord.Color.blue()
+                    )
+
+                    # Create select menu with search results
+                    channel_options = [
+                        discord.SelectOption(
+                            label=channel['name'][:25],
+                            description=f"ID: {channel['id']}",
+                            value=channel['id']
+                        )
+                        for channel in filtered_channels[:25]  # Limit to 25 results
+                    ]
+
+                    select_menu = discord.ui.Select(
+                        placeholder="Select channels from search results",
+                        options=channel_options,
+                        max_values=len(channel_options)
+                    )
+
+                    async def search_select_callback(select_interaction):
+                        selected_ids = select_interaction.data["values"]
+                        # Add selected channels to the main selection
+                        for channel_id in selected_ids:
+                            self.outer_view.selected_channels.add(channel_id)
+                        
+                        # Update the main view
+                        self.outer_view.update_select_menu()
+                        await select_interaction.response.edit_message(
+                            embed=discord.Embed(
+                                title="Channel Selection",
+                                description=f"Page {self.outer_view.current_page + 1}/{self.outer_view.total_pages}\n"
+                                        f"Selected: {len(self.outer_view.selected_channels)} channels",
+                                color=discord.Color.blue()
+                            ),
+                            view=self.outer_view
+                        )
+
+                    select_menu.callback = search_select_callback
+                    view = discord.ui.View()
+                    view.add_item(select_menu)
+
+                    await modal_interaction.response.send_message(
+                        embed=result_embed,
+                        view=view,
+                        ephemeral=True
+                    )
+
+            # Store reference to outer view
+            SearchModal.outer_view = self
+            await interaction.response.send_modal(SearchModal())
+
+        @discord.ui.button(label="Add configuration", style=discord.ButtonStyle.green)
+        async def save_config(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if not self.selected_channels:
+                await interaction.response.send_message(
+                    embed=create_embed("<:warnsign:1309124972899340348> Error", "Please select at least one channel."),
+                    ephemeral=True
+                )
+                return
+
+            selected_channels = [
+                c for c in self.text_channels 
+                if c['id'] in self.selected_channels
+            ]
+
+            # Initialize server configuration if it doesn't exist
+            if "servers" not in self.account_info:
+                self.account_info["servers"] = {}
+            
+            # Initialize server if it doesn't exist
+            if self.server_id not in self.account_info["servers"]:
+                self.account_info["servers"][self.server_id] = {
+                    "name": self.server_name,
+                    "channels": {},
+                    "autoposting": False
+                }
+
+            # Add new channels while preserving existing ones
+            existing_channels = self.account_info["servers"][self.server_id].get("channels", {})
+            
+            # Add new channels
+            for channel in selected_channels:
+                channel_id = channel['id']
+                if channel_id not in existing_channels:  # Only add if channel doesn't exist
+                    existing_channels[channel_id] = {
+                        "name": channel['name'],
+                        "message": "",
+                        "delay": None
+                    }
+
+            # Update the channels in the server configuration
+            self.account_info["servers"][self.server_id]["channels"] = existing_channels
+
+            global user_accounts
+            save_data()
+
+            # Create success embed
+            success_embed = discord.Embed(
+                title="<:verified:1308057482085666837> Configuration Updated",
+                color=discord.Color.green(),
+                timestamp=datetime.utcnow()
+            )
+            
+            # Show existing and newly added channels
+            all_channels = []
+            new_channels = []
+            for channel in selected_channels:
+                channel_id = channel['id']
+                if channel_id not in existing_channels:
+                    new_channels.append(f"• {channel['name']} (`{channel_id}`)")
+                all_channels.append(f"• {channel['name']} (`{channel_id}`)")
+
+            success_embed.add_field(
+                name="Account",
+                value=self.account_name,
+                inline=False
+            )
+            
+            success_embed.add_field(
+                name="Server",
+                value=f"{self.server_name} (`{self.server_id}`)",
+                inline=False
+            )
+
+            if new_channels:
+                success_embed.add_field(
+                    name="Newly Added Channels",
+                    value="\n".join(new_channels),
+                    inline=False
+                )
+
+            success_embed.add_field(
+                name="Total Configured Channels",
+                value=f"Total: {len(existing_channels)} channels\n" + "\n".join(all_channels),
+                inline=False
+            )
+
+            success_embed.add_field(
+                name="Next Steps",
+                value="Use `/setting` to configure messages and delays for each channel.",
+                inline=False
+            )
+
+            await interaction.response.send_message(
+                embed=success_embed,
+                ephemeral=True
+            )
+            self.stop()
+
+        
+
+        @discord.ui.button(label="Cancel Selection", style=discord.ButtonStyle.red)
+        async def cancel_selection(self, interaction: discord.Interaction, button: discord.ui.Button):
+            self.selected_channels.clear()  # Clear all selected channels
+            self.update_select_menu()
+            await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title="Channel Selection",
+                    description=f"Page {self.current_page + 1}/{self.total_pages}\nAll selections cleared",
+                    color=discord.Color.blue()
+                ),
+                view=self
+            )
+
+        @discord.ui.button(label="Cancel Configuration", style=discord.ButtonStyle.grey)
+        async def cancel_config(self, interaction: discord.Interaction, button: discord.ui.Button):
+            await interaction.response.send_message(
+                embed=create_embed("Configuration Cancelled", "Channel configuration has been cancelled."),
+                ephemeral=True
+            )
+            self.stop()
+
+        async def channel_select_callback(self, interaction: discord.Interaction):
+            # Update selected channels
+            selected_ids = interaction.data["values"]
+            for channel_id in selected_ids:
+                self.selected_channels.add(channel_id)
+            
+            # Update the message to show selection count
+            await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title="Channel Selection",
+                    description=f"Page {self.current_page + 1}/{self.total_pages}\nSelected: {len(self.selected_channels)} channels",
+                    color=discord.Color.blue()
+                ),
+                view=self
+            )
+
+    async def account_callback(interaction):
+        account_name = interaction.data["values"][0]
+        account_info = accounts[account_name]
+        token = account_info["token"]
+
+        await loading_msg.edit(
+            embed=discord.Embed(
+                title="Loading Servers",
+                description="Fetching servers from the selected account...",
+                color=discord.Color.blue()
+            )
+        )
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                headers = {'Authorization': token}
+                async with session.get('https://discord.com/api/v9/users/@me/guilds', headers=headers) as response:
+                    if response.status == 200:
+                        servers = await response.json()
+                        servers_per_page = 25
+                        total_pages = (len(servers) + servers_per_page - 1) // servers_per_page
+
+                        class ServerPaginationView(discord.ui.View):
+                            def __init__(self):
+                                super().__init__()
+                                self.current_page = 0
+
+                            def get_current_options(self):
+                                start_idx = self.current_page * servers_per_page
+                                end_idx = min(start_idx + servers_per_page, len(servers))
+                                current_servers = servers[start_idx:end_idx]
+                                return [
+                                    discord.SelectOption(
+                                        label=server['name'][:25],
+                                        description=f"ID: {server['id']}",
+                                        value=server['id']
+                                    )
+                                    for server in current_servers
+                                ]
+
+                            async def update_message(self, interaction):
+                                select_menu = discord.ui.Select(
+                                    placeholder="Select a server to configure",
+                                    options=self.get_current_options()
+                                )
+                                select_menu.callback = server_callback
+                                
+                                for item in self.children[:]:
+                                    if isinstance(item, discord.ui.Select):
+                                        self.remove_item(item)
+                                
+                                self.add_item(select_menu)
+                                
+                                embed = discord.Embed(
+                                    title="Server Selection",
+                                    description=f"Page {self.current_page + 1}/{total_pages}",
+                                    color=discord.Color.blue()
+                                )
+                                
+                                await interaction.response.edit_message(embed=embed, view=self)
+
+                            @discord.ui.button(emoji="◀️", style=discord.ButtonStyle.blurple)
+                            async def previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+                                if self.current_page > 0:
+                                    self.current_page -= 1
+                                    await self.update_message(interaction)
+
+                            @discord.ui.button(emoji="▶️", style=discord.ButtonStyle.blurple)
+                            async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+                                if self.current_page < total_pages - 1:
+                                    self.current_page += 1
+                                    await self.update_message(interaction)
+
+                        async def server_callback(server_interaction):
+                            server_id = server_interaction.data["values"][0]
+                            server_name = next(s['name'] for s in servers if s['id'] == server_id)
+
+                            async with aiohttp.ClientSession() as new_session:
+                                try:
+                                    await loading_msg.edit(
+                                        embed=discord.Embed(
+                                            title="Loading Channels",
+                                            description=f"Fetching channels from {server_name}...",
+                                            color=discord.Color.blue()
+                                        )
+                                    )
+
+                                    async with new_session.get(
+                                        f'https://discord.com/api/v9/guilds/{server_id}/channels',
+                                        headers={'Authorization': token}
+                                    ) as channels_response:
+                                        if channels_response.status == 200:
+                                            channels = await channels_response.json()
+                                            text_channels = [c for c in channels if c['type'] == 0]
+
+                                            view = ChannelPaginationView(
+                                                text_channels=text_channels,
+                                                account_info=account_info,
+                                                server_id=server_id,
+                                                server_name=server_name,
+                                                account_name=account_name
+                                            )
+
+                                            await server_interaction.response.send_message(
+                                                embed=discord.Embed(
+                                                    title="Channel Selection",
+                                                    description=f"Page 1/{view.total_pages}\nSelected: 0 channels",
+                                                    color=discord.Color.blue()
+                                                ),
+                                                view=view,
+                                                ephemeral=True
+                                            )
+
+                                except Exception as e:
+                                    await server_interaction.response.send_message(
+                                        embed=create_embed(
+                                            "<:warnsign:1309124972899340348> Error",
+                                            f"An error occurred while fetching channels: {str(e)}"
+                                        ),
+                                        ephemeral=True
+                                    )
+
+                        view = ServerPaginationView()
+                        select_menu = discord.ui.Select(
+                            placeholder="Select a server to configure",
+                            options=view.get_current_options()
+                        )
+                        select_menu.callback = server_callback
+                        view.add_item(select_menu)
+
+                        await interaction.response.send_message(
+                            embed=discord.Embed(
+                                title="Server Selection",
+                                description=f"Page 1/{total_pages}",
+                                color=discord.Color.blue()
+                            ),
+                            view=view,
+                            ephemeral=True
+                        )
+
+            except Exception as e:
+                await interaction.response.send_message(
+                    embed=create_embed(
+                        "<:warnsign:1309124972899340348> Error",
+                        f"An error occurred while fetching servers: {str(e)}"
+                    ),
+                    ephemeral=True
+                )
+
+
+            async def server_callback(server_interaction):
+                try:
+                    # Get server details from the interaction
+                    server_id = server_interaction.data["values"][0]
+                    server_name = next((s['name'] for s in servers if s['id'] == server_id), None)
+                    
+                    if not server_name:
+                        raise ValueError("Server not found")
+
+                    # Show loading message
+                    loading_embed = discord.Embed(
+                        title="Loading Channels",
+                        description=f"Fetching channels from {server_name}...",
+                        color=discord.Color.blue()
+                    )
+                    
+                    await server_interaction.response.defer(ephemeral=True)
+                    loading_message = await server_interaction.followup.send(embed=loading_embed, ephemeral=True)
+
+                    # Fetch channels using aiohttp
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            f'https://discord.com/api/v9/guilds/{server_id}/channels',
+                            headers={'Authorization': token}
+                        ) as response:
+                            if response.status != 200:
+                                raise Exception(f"API returned status code {response.status}")
+                            
+                            channels_data = await response.json()
+                            
+                            # Filter text channels
+                            text_channels = [channel for channel in channels_data if channel['type'] == 0]
+                            
+                            if not text_channels:
+                                raise ValueError("No text channels found in this server")
+
+                            # Create pagination view
+                            channel_view = ChannelPaginationView(
+                                text_channels=text_channels,
+                                account_info=account_info,
+                                server_id=server_id,
+                                server_name=server_name,
+                                account_name=account_name
+                            )
+
+                            # Create channel selection embed
+                            channel_embed = discord.Embed(
+                                title="Channel Selection",
+                                description=f"Page 1/{channel_view.total_pages}\nSelected: 0 channels",
+                                color=discord.Color.blue()
+                            )
+
+                            # Edit the loading message with channel selection
+                            await loading_message.edit(embed=channel_embed, view=channel_view)
+
+                except Exception as e:
+                    error_embed = create_embed(
+                        "<:warnsign:1309124972899340348> Error",
+                        f"An error occurred: {str(e)}"
+                    )
+                    
+                    if not server_interaction.response.is_done():
+                        await server_interaction.response.send_message(embed=error_embed, ephemeral=True)
+                    else:
+                        await server_interaction.followup.send(embed=error_embed, ephemeral=True)
+
+            # Create server selection
+            server_select = discord.ui.Select(
+                placeholder="Select a server",
+                options=[
+                    discord.SelectOption(label=server['name'], value=server['id'])
+                    for server in servers
+                ]
+            )
+
+            # Assign callback
+            server_select.callback = server_callback
+
+            # Create and add to view
+            view = discord.ui.View()
+            view.add_item(server_select)
+
+            # Send initial message
+            await interaction.response.send_message(
+                embed=create_embed("Server Selection", "Select a server to configure:"),
+                view=view,
+                ephemeral=True
+            )
+
+                    
+    account_select.callback = account_callback
     view = discord.ui.View()
-    view.add_item(dropdown)
+    view.add_item(account_select)
 
-    await interaction.response.send_message(embed=create_embed("Remove Server", "Select a server to remove:"), view=view)
-
-
-# Utility function to create embeds
-def create_embed(title, description):
-    return discord.Embed(title=title, description=description, color=discord.Color.green())
-
+    await loading_msg.edit(
+        embed=create_embed("Account Selection", "Choose an account to configure:"),
+        view=view
+    )
+    save_data()
 ## ---------------------------------------------------------------------------------------------------------------------------------------------
 
 # Load user accounts from the JSON file
@@ -1950,283 +2495,252 @@ async def update_accounts():
     print('USer accounts updated.')
     load_data()
 
-@bot.hybrid_command(name="update", description="Update server, channels, and messages for a specific account")
-async def update(ctx):
-    """
-    Starts the process to update server, channels, and messages for a specific account.
-    """
-    # Load the accounts to ensure data is available before processing
-    load_data()
-
+@bot.hybrid_command(name="setting", description="Configure messages and delays for channels")
+async def setting(ctx):
     user_id = str(ctx.author.id)
-
-    # Debug: Check the user ID and loaded accounts
-    print(f"User ID: {user_id}")
-    print("Loaded user_accounts:", user_accounts)
-
-    # Check if the user has registered accounts
+    
     if user_id not in user_accounts or not user_accounts[user_id].get("accounts"):
         await ctx.send(embed=create_embed("No Accounts Found", "You have no registered accounts."))
         return
 
     accounts = user_accounts[user_id]["accounts"]
     account_options = [discord.SelectOption(label=name, value=name) for name in accounts.keys()]
+    
+    # Account selection menu
+    select_account = discord.ui.Select(
+        placeholder="Select an account to configure",
+        options=account_options
+    )
 
-    # Debug: Check available accounts
-    print("Available accounts:", account_options)
-
-    # Check if there are any accounts
-    if not account_options:
-        await ctx.send(embed=create_embed("No Accounts", "No bot accounts are available to update."))
-        return
-
-    # Dropdown to select an account
-    select_account_menu = discord.ui.Select(placeholder="Select an account to update", options=account_options)
-
-    async def select_account_callback(interaction):
-        selected_account = interaction.data['values'][0]
-        account_info = accounts[selected_account]
-
-        # Debug: Log selected account and associated data
-        print(f"Selected account: {selected_account}")
-        print("Account info:", account_info)
-
-        # Get the list of servers associated with the selected account
-        # In the select_account_callback function
-        server_options = [
-            discord.SelectOption(
-                label=f"{server_info.get('name', 'Unnamed Server')}",
-                description=f"ID: {sid}",
-                value=sid
+    class ChannelConfigModal(discord.ui.Modal):
+        def __init__(self, channel_info, account_name, server_id):
+            super().__init__(title="Channel Configuration")
+            self.account_name = account_name
+            self.server_id = server_id
+            
+            self.message = discord.ui.TextInput(
+                label="Message Content",
+                style=discord.TextStyle.paragraph,
+                placeholder="Enter the message to send",
+                required=True,
+                default=channel_info.get('message', '')
             )
-            for sid, server_info in account_info.get("servers", {}).items()
-        ]
+            
+            self.delay = discord.ui.TextInput(
+                label="Channel Delay (seconds)",
+                placeholder="Enter delay between messages (minimum 60)",
+                required=True,
+                default=str(channel_info.get('delay', ''))
+            )
+            
+            self.add_item(self.message)
+            self.add_item(self.delay)
 
-        # Check if there are any servers for the selected account
-        if not server_options:
+        async def on_submit(self, interaction):
+            try:
+                delay = int(self.delay.value)
+                if delay < 60:
+                    raise ValueError("Delay must be at least 60 seconds")
+
+                channel_id = interaction.data.get("custom_id").split("_")[1]
+                
+                # Update configuration
+                server_info["channels"][channel_id].update({
+                    "message": self.message.value,
+                    "delay": delay
+                })
+                
+                    # Update message queue for real-time changes
+                update_channel_message(
+                    self.account_name,
+                    self.server_id,
+                    channel_id,
+                    self.message.value
+                )
+            
+           
+                save_data()
+                
+                success_embed = discord.Embed(
+                    title="<:verified:1308057482085666837> Channel Configuration Updated",
+                    description=(
+                        f"**Channel:** <#{channel_id}>\n"
+                        f"**Message:** ```{self.message.value}```\n"
+                        f"**Delay:** {delay} seconds\n\n"
+                        "Changes have been applied in real-time."
+                    ),
+                    color=discord.Color.green()
+                )
+                await interaction.response.send_message(embed=success_embed, ephemeral=True)
+                
+            except ValueError as e:
+                await interaction.response.send_message(
+                    embed=create_embed("<:warnsign:1309124972899340348> Error", str(e)),
+                    ephemeral=True
+            )
+
+
+    class ChannelPaginationView(discord.ui.View):
+        def __init__(self, channels, server_name, account_name, server_id):
+            super().__init__()
+            self.channels = list(channels.items())
+            self.server_name = server_name
+            self.account_name = account_name  # Store account_name
+            self.server_id = server_id  # Store server_id
+            self.current_page = 0
+            self.channels_per_page = 25
+            self.total_pages = (len(self.channels) + self.channels_per_page - 1) // self.channels_per_page
+            self.update_view()
+
+        def update_view(self):
+            # Clear existing select menus
+            for item in self.children[:]:
+                if isinstance(item, discord.ui.Select):
+                    self.remove_item(item)
+
+            # Get current page's channels
+            start_idx = self.current_page * self.channels_per_page
+            end_idx = min(start_idx + self.channels_per_page, len(self.channels))
+            current_channels = self.channels[start_idx:end_idx]
+
+            # Create channel options
+            channel_options = []
+            for channel_id, channel_info in current_channels:
+                status = "✓" if channel_info.get("message") and channel_info.get("delay") else "⚠️"
+                delay = channel_info.get("delay", "Not set")
+                
+                option = discord.SelectOption(
+                    label=f"{channel_info.get('name', 'Channel')}",
+                    description=f"Delay: {delay}s | Status: {status}",
+                    value=channel_id
+                )
+                channel_options.append(option)
+
+            select_menu = discord.ui.Select(
+                placeholder=f"Select channel (Page {self.current_page + 1}/{self.total_pages})",
+                options=channel_options
+            )
+            select_menu.callback = self.channel_select_callback
+            self.add_item(select_menu)
+
+        async def channel_select_callback(self, interaction):
+            channel_id = interaction.data["values"][0]
+            channel_info = dict(self.channels)[channel_id]
+            modal = ChannelConfigModal(
+                channel_info,
+                self.account_name,  # Pass account_name
+                self.server_id  # Pass server_id
+        )
+            modal.custom_id = f"channel_{channel_id}"
+            await interaction.response.send_modal(modal)
+            
+        @discord.ui.button(emoji="<:arrow1:1315137117575446609>", style=discord.ButtonStyle.blurple)
+        async def previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if self.current_page > 0:
+                self.current_page -= 1
+                self.update_view()
+                await self.update_message(interaction)
+
+        @discord.ui.button(emoji="<:arrow:1308057423017410683>", style=discord.ButtonStyle.blurple)
+        async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if self.current_page < self.total_pages - 1:
+                self.current_page += 1
+                self.update_view()
+                await self.update_message(interaction)
+
+        async def update_message(self, interaction):
+            embed = discord.Embed(
+                title=f"Channel Configuration - {self.server_name}",
+                description=f"Page {self.current_page + 1}/{self.total_pages}\nSelect a channel to configure",
+                color=discord.Color.blue()
+            )
+            await interaction.response.edit_message(embed=embed, view=self)
+
+    async def account_callback(interaction):
+        account_name = interaction.data["values"][0]
+        account_info = accounts[account_name]
+
+        if not account_info.get("servers"):
             await interaction.response.send_message(
-                embed=create_embed("<:warnsign:1309124972899340348> No Servers", f"No servers are available for the account {selected_account}."),
+                embed=create_embed("No Servers", "No servers configured for this account."),
                 ephemeral=True
             )
             return
 
-        # Dropdown to select a server
-        server_menu = discord.ui.Select(placeholder="Select a server to update", options=server_options)
+        # Create server selection menu
+        server_options = []
+        for server_id, server_info in account_info["servers"].items():
+            channel_count = len(server_info.get("channels", {}))
+            server_options.append(
+                discord.SelectOption(
+                    label=server_info.get("name", "Unknown Server")[:25],
+                    description=f"ID: {server_id} | {channel_count} channels",
+                    value=server_id
+                )
+            )
 
-        async def server_select_callback(server_interaction):
-            server_id = server_interaction.data["values"][0]
-            server_config = account_info["servers"][server_id]
-
-            channel_options = [
-        discord.SelectOption(
-            label=f"{channel_info.get('name', 'Unnamed Channel')}",
-            description=f"ID: {cid}",
-            value=cid
+        server_select = discord.ui.Select(
+            placeholder="Select a server",
+            options=server_options
         )
-        for cid, channel_info in server_config.get("channels", {}).items()
-    ]
 
-
-            # If no channels are saved, inform the user
-            if not channel_options:
+        async def server_callback(server_interaction):
+            server_id = server_interaction.data["values"][0]
+            global server_info  # Make it accessible in modal
+            server_info = account_info["servers"][server_id]
+            
+            if not server_info.get("channels"):
                 await server_interaction.response.send_message(
-                    embed=create_embed("<:warnsign:1309124972899340348> No Channels", "No channels are available for this server."),
+                    embed=create_embed("No Channels", "No channels configured for this server."),
                     ephemeral=True
                 )
                 return
 
-            # Dropdown to select a channel
-            channel_menu = discord.ui.Select(placeholder="Select a channel to update", options=channel_options)
-
-            async def channel_select_callback(channel_interaction):
-                channel_id = channel_interaction.data["values"][0]
-                channel_info = server_config["channels"][channel_id]
-
-                # Show the modal to update the message for the selected channel
-                await show_channel_modal(channel_interaction, selected_account, server_id, channel_id, channel_info)
-
-            channel_menu.callback = channel_select_callback
-            view = discord.ui.View()
-            view.add_item(channel_menu)
-
+            view = ChannelPaginationView(
+            server_info["channels"],
+            server_info.get("name", "Unknown Server"),
+            account_name,  # Pass account_name
+            server_id  # Pass server_id
+        )
+            
             await server_interaction.response.send_message(
-                embed=create_embed("Channel Selection", "Select a channel to update the message:"), view=view
+                embed=discord.Embed(
+                    title=f"Channel Configuration - {server_info.get('name', 'Unknown Server')}",
+                    description="Select a channel to configure",
+                    color=discord.Color.blue()
+                ),
+                view=view,
+                ephemeral=True
             )
 
-        server_menu.callback = server_select_callback
+        server_select.callback = server_callback
         view = discord.ui.View()
-        view.add_item(server_menu)
+        view.add_item(server_select)
+        
+        await interaction.response.send_message(
+            embed=create_embed("Server Selection", "Select a server to configure:"),
+            view=view,
+            ephemeral=True
+        )
 
-        await interaction.response.send_message(embed=create_embed("Server Selection", "Select a server to update:"), view=view)
-
-    select_account_menu.callback = select_account_callback
+    select_account.callback = account_callback
     view = discord.ui.View()
-    view.add_item(select_account_menu)
+    view.add_item(select_account)
 
-    await ctx.send(embed=create_embed("Select Bot Account", "Choose a bot account to update settings:"), view=view)
-
-# Modal to change the message for a specific channel
-async def show_channel_modal(interaction, account_name, server_id, channel_id, channel_info):
-    class ChannelModal(discord.ui.Modal):
-        def __init__(self):
-            modal_title = f"Update Channel {channel_id[:15]}"
-            super().__init__(title=modal_title)
-            
-            self.message_content = discord.ui.TextInput(
-                label="New Message",
-                placeholder="Enter the new message content",
-                default=channel_info.get('message', ''),
-                style=discord.TextStyle.paragraph,
-                required=True
-            )
-            self.add_item(self.message_content)
-
-        async def on_submit(self, modal_interaction):
-            user_id = str(modal_interaction.user.id)
-            
-            if user_id not in user_accounts or account_name not in user_accounts[user_id]["accounts"]:
-                await modal_interaction.response.send_message(
-                    embed=create_embed("Error", f"Account '{account_name}' not found."),
-                    ephemeral=True
-                )
-                return
-
-            # Update the message in the database
-            account_info = user_accounts[user_id]["accounts"][account_name]
-            if "servers" not in account_info:
-                account_info["servers"] = {}
-            if server_id not in account_info["servers"]:
-                account_info["servers"][server_id] = {"channels": {}}
-            
-            new_message = str(self.message_content.value)
-            account_info["servers"][server_id]["channels"][channel_id] = {
-                "message": new_message
-            }
-            
-            # Update the message queue
-            update_channel_message(account_name, server_id, channel_id, new_message)
-            
-            save_data()
-            await modal_interaction.response.send_message(
-                embed=create_embed("<a:yes:1315115538355064893> Message Updated", f"Updated message for Channel {channel_id}")
-            )
-
-    await interaction.response.send_modal(ChannelModal())
+    await ctx.send(
+        embed=create_embed("Account Selection", "Choose an account to configure:"),
+        view=view
+    )
 
 ## ------------------------------------------------------------------------------------------------------------
-@bot.hybrid_command(name="addserver", description="Add a server to a specific bot account.")
-async def addserver(ctx):
-    """
-    Adds a server to the selected bot account.
-    Asks for the server name and ID via a modal.
-    """
-    # Ensure accounts are loaded before accessing them
-    load_data()
-
-    user_id = str(ctx.author.id)
-
-    # Check if the user has registered accounts
-    if user_id not in user_accounts or not user_accounts[user_id].get("accounts"):
-        await ctx.send(embed=create_embed("No Accounts Found", "You have no registered accounts."))
-        return
-
-    accounts = user_accounts[user_id]["accounts"]
-    account_options = [discord.SelectOption(label=name, value=name) for name in accounts.keys()]
-
-    # Check if there are any accounts
-    if not account_options:
-        await ctx.send(embed=create_embed("No Accounts", "No bot accounts are available to update."))
-        return
-
-    # Dropdown to select an account
-    select_account_menu = discord.ui.Select(placeholder="Select an account to add a server", options=account_options)
-
-    async def select_account_callback(interaction):
-        selected_account = interaction.data['values'][0]
-        account_info = accounts[selected_account]
-
-        # Ensure the 'servers' key exists in the account
-        if "servers" not in account_info:
-            account_info["servers"] = {}  # Initialize the servers key if it doesn't exist
-
-        # Ask the user for the server details using a modal
-        await show_add_server_modal(interaction, selected_account, account_info)
-
-    select_account_menu.callback = select_account_callback
-    view = discord.ui.View()
-    view.add_item(select_account_menu)
-
-    await ctx.send(embed=create_embed("Select Bot Account", "Choose a bot account to add a server:"), view=view)
-
-async def show_add_server_modal(interaction, account_name, account_info):
-    """
-    Displays a modal asking for the server name and server ID.
-    """
-    class AddServerModal(discord.ui.Modal):
-        def __init__(self):
-            super().__init__(title="Add Server to Bot Account")
-
-            # Inputs for server name and server ID
-            self.server_name = discord.ui.TextInput(
-                label="Server Name", 
-                placeholder="Enter the server name", 
-                required=True
-            )
-            self.server_id = discord.ui.TextInput(
-                label="Server ID", 
-                placeholder="Enter the server ID", 
-                required=True
-            )
-
-            self.add_item(self.server_name)
-            self.add_item(self.server_id)
-
-        async def on_submit(self, modal_interaction):
-            server_name = self.server_name.value.strip()
-            server_id = self.server_id.value.strip()
-
-            # Check if the server ID already exists for the account
-            if server_id in account_info.get("servers", {}):
-                await modal_interaction.response.send_message(
-                    embed=create_embed("Error", f"Server ID {server_id} is already linked to the bot account."),
-                    ephemeral=True
-                )
-                return
-
-            # Add the server to the account with both name and ID
-            if "servers" not in account_info:
-                account_info["servers"] = {}
-                
-            account_info["servers"][server_id] = {
-                "name": server_name,
-                "channels": {},
-                "autoposting": False
-            }
-
-            save_data()
-
-            # Confirm the server was added successfully
-            await modal_interaction.response.send_message(
-                embed=create_embed(
-                    "Server Added", 
-                    f"Server '{server_name}' (ID: {server_id}) has been added to the bot account '{account_name}'."
-                )
-            )
-
-    # Show the modal to the user
-    await interaction.response.send_modal(AddServerModal())
-
-# Utility function to create embeds (can be used for message formatting)
-def create_embed(title, description):
-    return discord.Embed(title=title, description=description, color=discord.Color.green())
 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------
     
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-@bot.hybrid_command(name="warning", description="Send a warning message to all users (Admin Only)")
+@bot.hybrid_command(name="broadcast", description="Send a warning message to all users (Admin Only)")
 @commands.has_role("admin")
-async def warning(ctx, *, message: str):
+async def broadcast(ctx, *, message: str):
     """
     Sends a warning message to all saved webhooks.
     Only users with admin role can use this command.
@@ -2789,234 +3303,8 @@ async def cleanup_old_logs():
             
             # Ensure message counters exist
     save_data()
-
 ## -------------------------------------------------------------------------------------------------------------------
 
-@bot.hybrid_command(name="startall", description="Start all configured bot accounts")
-async def startall(ctx):
-    user_id = str(ctx.author.id)
-    
-    if user_id not in user_accounts or not user_accounts[user_id].get("accounts"):
-        await ctx.send(embed=create_embed("No Accounts Found", "You have no registered accounts."))
-        return
-
-    # Ask for global delay
-    await ctx.send("Enter the global delay (in seconds) for all bots:")
-    try:
-        delay_msg = await bot.wait_for(
-            "message", 
-            check=lambda m: m.author == ctx.author, 
-            timeout=30.0
-        )
-        global_delay = int(delay_msg.content)
-        if global_delay <= 0:
-            raise ValueError
-    except (ValueError, TimeoutError):
-        await ctx.send(embed=create_embed("Invalid Input", "Please enter a valid positive number for delay."))
-        return
-
-    # Create loading message
-    loading_message = await ctx.send(
-        embed=discord.Embed(
-            title="Starting All Bots",
-            description="Initializing...",
-            color=discord.Color.blue()
-        )
-    )
-
-    accounts = user_accounts[user_id]["accounts"]
-    total_started = 0
-    total_servers = sum(len(acc.get("servers", {})) for acc in accounts.values())
-    failed_starts = []
-
-    for acc_name, account_info in accounts.items():
-        try:
-            # Update message to show which account is being processed
-            await loading_message.edit(
-                embed=discord.Embed(
-                    title="Starting All Bots",
-                    description=f"Processing account: {acc_name}",
-                    color=discord.Color.blue()
-                )
-            )
-
-            for server_id, server_config in account_info.get("servers", {}).items():
-                server_name = server_config.get("name", "Unknown Server")
-                
-                # Update message to show which server is being started
-                await loading_message.edit(
-                    embed=discord.Embed(
-                        title="Starting All Bots",
-                        description=(
-                            f"**Account:** {acc_name}\n"
-                            f"**Starting Server:** {server_name} ({server_id})\n"
-                            f"**Progress:** {total_started}/{total_servers} servers"
-                        ),
-                        color=discord.Color.blue()
-                    )
-                )
-
-                # Set start time and autoposting flag
-                account_info["start_time"] = time.time()
-                server_config["autoposting"] = True
-                
-                # Add to activity logs
-                add_activity_log(account_info, "start", server_id, delay=global_delay)
-                
-                # Start autoposting task
-                threading.Thread(
-                    target=run_autopost_task,
-                    args=(user_id, acc_name, account_info["token"], global_delay, server_id)
-                ).start()
-                
-                total_started += 1
-
-                # Wait 5 seconds between each server start
-                await asyncio.sleep(5)
-
-        except Exception as e:
-            failed_starts.append(f"{acc_name} - {server_name}: {str(e)}")
-
-    save_data()
-    await force_activity_update()
-
-    # Create final status embed
-    final_embed = discord.Embed(
-        title="<:verified:1308057482085666837> Mass Start Complete",
-        color=discord.Color.green() if not failed_starts else discord.Color.orange(),
-        timestamp=datetime.utcnow()
-    )
-    
-    final_embed.add_field(
-        name="Summary",
-        value=(
-            f"Successfully started {total_started}/{total_servers} servers\n"
-            f"Global Delay: {global_delay}s\n"
-            f"Total Accounts Processed: {len(accounts)}"
-        ),
-        inline=False
-    )
-    
-    if failed_starts:
-        final_embed.add_field(
-            name="Failed Starts",
-            value="\n".join(failed_starts),
-            inline=False
-        )
-
-    await loading_message.edit(embed=final_embed)
-
-
-@bot.hybrid_command(name="stopall", description="Stop all running bot accounts")
-async def stopall(ctx):
-    user_id = str(ctx.author.id)
-    
-    if user_id not in user_accounts or not user_accounts[user_id].get("accounts"):
-        await ctx.send(embed=create_embed("No Accounts Found", "You have no registered accounts."))
-        return
-
-    loading_message = await ctx.send(
-        embed=discord.Embed(
-            title="Stopping All Bots",
-            description="Initializing...",
-            color=discord.Color.blue()
-        )
-    )
-
-    accounts = user_accounts[user_id]["accounts"]
-    total_stopped = 0
-    failed_stops = []
-
-    for acc_name, account_info in accounts.items():
-        try:
-            for server_id, server_config in account_info.get("servers", {}).items():
-                if server_config.get("autoposting", False):
-                    server_config["autoposting"] = False
-                    add_activity_log(account_info, "stop", server_id)
-                    total_stopped += 1
-
-                    # Update loading message
-                    await loading_message.edit(
-                        embed=discord.Embed(
-                            title="Stopping All Bots",
-                            description=f"Stopped {total_stopped} configurations...",
-                            color=discord.Color.blue()
-                        )
-                    )
-
-        except Exception as e:
-            failed_stops.append(f"{acc_name}: {str(e)}")
-
-    save_data()
-    await force_activity_update()
-
-    # Create final status embed
-    final_embed = discord.Embed(
-        title="<:verified:1308057482085666837> Mass Stop Complete",
-        color=discord.Color.green() if not failed_stops else discord.Color.orange(),
-        timestamp=datetime.utcnow()
-    )
-    
-    final_embed.add_field(
-        name="Summary",
-        value=f"Successfully stopped {total_stopped} configurations",
-        inline=False
-    )
-    
-    if failed_stops:
-        final_embed.add_field(
-            name="Failed Stops",
-            value="\n".join(failed_stops),
-            inline=False
-        )
-
-    await loading_message.edit(embed=final_embed)
-
-# Modify the create_log_embeds function to include mass start/stop events
-async def create_log_embeds(account_info, account_name):
-    embeds = []
-    logs = account_info.get("activity_logs", [])
-    
-    if not logs:
-        embed = discord.Embed(
-            title=f"Activity Logs for {account_name}",
-            description="No logs found for this account.",
-            color=discord.Color.blue(),
-            timestamp=datetime.utcnow()
-        )
-        embeds.append(embed)
-        return embeds
-
-    # Sort logs by timestamp (newest first)
-    logs.sort(key=lambda x: datetime.strptime(x['timestamp'], "%Y-%m-%d | %H:%M:%S"), reverse=True)
-    
-    # Create embeds for logs (5 per page)
-    for i in range(0, len(logs), 5):
-        embed = discord.Embed(
-            title=f"<:info:1313673655720611891> Activity Logs for {account_name}",
-            color=discord.Color.blue(),
-            timestamp=datetime.utcnow()
-        )
-        
-        page_logs = logs[i:i+5]
-        for log in page_logs:
-            if log['type'] == 'start':
-                embed.add_field(
-                    name=f"<a:Online:1315112774350803066> Started Autoposting ({log['timestamp']})",
-                    value=f"**Server:** {log['server_id']}\n**Global Delay:** {log.get('delay', 'N/A')}s",
-                    inline=False
-                )
-            elif log['type'] == 'stop':
-                embed.add_field(
-                    name=f"<a:offline:1315112799822680135> Stopped Autoposting ({log['timestamp']})",
-                    value=f"**Server:** {log['server_id']}",
-                    inline=False
-                )
-        
-        embed.set_footer(text=f"Page {len(embeds) + 1}/{(len(logs) + 4) // 5}")
-        embeds.append(embed)
-    
-    return embeds
 
 ##------------------------------------------------------------------------------------------------------------
 
@@ -3794,128 +4082,8 @@ async def on_message(message):
 
 ## Reps --------------------------------------------------------------------------------------------------------------------
 
-@bot.hybrid_command(name="setreps", description="Set the current channel for reputation notifications (Admin Only)")
-@commands.has_permissions(administrator=True)
-async def setreps(ctx):
-    """Sets the current channel as the reputation notification channel"""
-    guild_id = str(ctx.guild.id)
-    
-    # Use the existing welcome_configs dictionary
-    if guild_id not in welcome_configs:
-        welcome_configs[guild_id] = {}
-    
-    # Add reps_channel_id to the existing config
-    welcome_configs[guild_id]["reps_channel_id"] = ctx.channel.id
-    
-    # Save to the existing welcome_configs.json
-    save_welcome_configs()
-    
-    embed = discord.Embed(
-        title="<:verified:1308057482085666837> Reputation Channel Set",
-        description=f"This channel will now receive reputation notifications.",
-        color=discord.Color.green()
-    )
-    await ctx.send(embed=embed)
 
-@bot.hybrid_command(name="reps", description="Create a reputation button for users")
-@commands.has_permissions(administrator=True)
-async def reps(ctx):
-    """Creates a reputation button that users can click to leave feedback"""
-    
-    class ReputationView(discord.ui.View):
-        def __init__(self):
-            super().__init__(timeout=None)
-        
-        @discord.ui.button(label="Leave Feedback", style=discord.ButtonStyle.green, emoji="⭐")
-        async def reputation_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-            await interaction.response.send_modal(ReputationModal())
-    
-    class ReputationModal(discord.ui.Modal):
-        def __init__(self):
-            super().__init__(title="Leave Feedback")
-            
-            self.product = discord.ui.TextInput(
-                label="What did you purchase?",
-                placeholder="Enter the product/service name",
-                required=True
-            )
-            
-            self.feedback = discord.ui.TextInput(
-                label="Your Feedback",
-                placeholder="Share your experience...",
-                style=discord.TextStyle.paragraph,
-                required=True
-            )
-            
-            self.add_item(self.product)
-            self.add_item(self.feedback)
-        
-        async def on_submit(self, interaction: discord.Interaction):
-            guild_id = str(interaction.guild.id)
-            
-            # Check if guild has configs and reps channel
-            if guild_id not in welcome_configs or "reps_channel_id" not in welcome_configs[guild_id]:
-                await interaction.response.send_message(
-                    "No reputation channel has been set up. Please contact an administrator.",
-                    ephemeral=True
-                )
-                return
-            
-            channel = interaction.guild.get_channel(welcome_configs[guild_id]["reps_channel_id"])
-            if not channel:
-                await interaction.response.send_message(
-                    "The reputation channel could not be found. Please contact an administrator.",
-                    ephemeral=True
-                )
-                return
-            
-            # Create and send the reputation embed
-            rep_embed = discord.Embed(
-                title="⭐ New Reputation",
-                color=discord.Color.gold(),
-                timestamp=datetime.utcnow()
-            )
-            
-            rep_embed.add_field(
-                name="From",
-                value=f"{interaction.user.mention}",
-                inline=False
-            )
-            
-            rep_embed.add_field(
-                name="Product/Service",
-                value=self.product.value,
-                inline=False
-            )
-            
-            rep_embed.add_field(
-                name="Feedback",
-                value=self.feedback.value,
-                inline=False
-            )
-            
-            rep_embed.set_thumbnail(url=interaction.user.avatar.url if interaction.user.avatar else interaction.user.default_avatar.url)
-            
-            await channel.send(embed=rep_embed)
-            
-            # Send confirmation to user
-            confirm_embed = discord.Embed(
-                title="<:verified:1308057482085666837> Feedback Submitted",
-                description="Thank you for your feedback! Your reputation has been recorded.",
-                color=discord.Color.green()
-            )
-            await interaction.response.send_message(embed=confirm_embed, ephemeral=True)
-    
-    embed = discord.Embed(
-        title="⭐ Reputation System",
-        description="Click the button below to leave feedback about your purchase!",
-        color=discord.Color.blue()
-    )
-    
-    await ctx.send(embed=embed, view=ReputationView())
-
-
-## -----------------------------------------------------------------------------
+## ----------------------------------------------------------------------------
 
 def send_dm_message(token, channel_id, message):
     """Helper function to send DM messages"""
@@ -4061,8 +4229,8 @@ async def monitor(ctx):
                                 if message.get("type") == 1 or message.get("channel_type") == 1:
                                     try:
                                         embed = discord.Embed(
-                                            title=f"<:mailbox:1308057455921467452> New DM Received - {account_name}",  # Added bot name here
-                                            color=discord.Color.blue(),
+                                            title=f"<:mailbox:1308057455921467452> New DM Received - {account_name}\n═════════════",  # Added bot name here
+                                            color=discord.Color.from_rgb(0, 0, 0),
                                             timestamp=datetime.utcnow()
                                         )
                                         
@@ -4070,21 +4238,22 @@ async def monitor(ctx):
                                         channel_id = message.get('channel_id')
                                         
                                         embed.add_field(
-                                            name="Bot Account",  # Added bot account field
-                                            value=f"`{account_name}`",
+                                            name="<:bott:1308056946263461989> Bot Account",  # Added bot account field
+                                            value=f"```{account_name}```",
                                             inline=False
                                         )
                                         
                                         embed.add_field(
-                                            name="From",
-                                            value=f"<@{sender_id}> ({message.get('author', {}).get('username')})",
+                                            name="<:mannequin:1324255991037952070> From",
+                                            value=f"<@{sender_id}> ```({message.get('author', {}).get('username')})```",
                                             inline=False
                                         )
                                         
                                         if message.get("content"):
+                                            content = message.get("content")
                                             embed.add_field(
-                                                name="Message",
-                                                value=message.get("content"),
+                                                name="<:sign:1309134372800299220> Message",
+                                                value=f"```{content}```",
                                                 inline=False
                                             )
                                         
@@ -4122,7 +4291,7 @@ async def monitor(ctx):
                                                 embed.set_image(url=first_att.get("url"))
 
                                         embed.add_field(
-                                            name="Reply Information",
+                                            name="<:mailbox:1308057455921467452> Reply Information",
                                             value=f"**Channel ID:** ```{channel_id}```\n Copy channel id and use the Reply button in monitor command to respond.",
                                             inline=False
                                         )
@@ -4197,7 +4366,6 @@ async def monitor(ctx):
     view.add_item(select_menu)
     
     await ctx.send(embed=create_embed("Select Account", "Choose an account to monitor DMs:"), view=view)
-
 
 
 ## -----------------------------------------------------------------------------------------
@@ -4554,7 +4722,599 @@ async def replace_token(ctx):
     )
 
 ## --------------------------------------------------------------------------------------------------------
+## Autoreply json -----------------------------------------------------------------------------------------------------------------------------------------
+# Add to global variables
+autoreply_configs = {}
 
+def save_autoreply_configs():
+    with open("autoreply_configs.json", "w") as f:
+        json.dump(autoreply_configs, f, indent=4)
+
+def load_autoreply_configs():
+    global autoreply_configs
+    try:
+        with open("autoreply_configs.json", "r") as f:
+            autoreply_configs = json.load(f)
+    except FileNotFoundError:
+        autoreply_configs = {}
+
+
+## Command: Autoreply  -----------------------------------------------------------------------------------------------------------------------------------------
+
+@bot.hybrid_command(name="autoreply", description="Configure autoreply settings for your accounts")
+async def autoreply(ctx):
+    user_id = str(ctx.author.id)
+    
+    if user_id not in user_accounts or not user_accounts[user_id].get("accounts"):
+        await ctx.send(embed=create_embed("No Accounts Found", "You have no registered accounts."))
+        return
+
+    accounts = user_accounts[user_id]["accounts"]
+    account_options = [discord.SelectOption(label=name, value=name) for name in accounts.keys()]
+    
+    select_menu = discord.ui.Select(
+        placeholder="Select an account to configure autoreply",
+        options=account_options
+    )
+
+    class AutoreplyConfigView(discord.ui.View):
+        def __init__(self, account_name):
+            super().__init__()
+            self.account_name = account_name
+
+        @discord.ui.button(label="Configure Keywords", style=discord.ButtonStyle.blurple)
+        async def configure_keywords(self, interaction: discord.Interaction, button: discord.ui.Button):
+            modal = AutoreplyModal(self.account_name)
+            await interaction.response.send_modal(modal)
+
+        @discord.ui.button(label="Set Delay", style=discord.ButtonStyle.green)
+        async def set_delay(self, interaction: discord.Interaction, button: discord.ui.Button):
+            await interaction.response.send_message("Please enter the delay in seconds:", ephemeral=True)
+            try:
+                msg = await bot.wait_for(
+                    'message',
+                    check=lambda m: m.author == ctx.author,
+                    timeout=30.0
+                )
+                delay = int(msg.content)
+                if delay < 1:
+                    raise ValueError("Delay must be at least 1 second")
+                
+                autoreply_configs[user_id][self.account_name]["delay"] = delay
+                save_autoreply_configs()
+                
+                await interaction.followup.send(
+                    embed=create_embed("Delay Set", f"Autoreply delay set to {delay} seconds"),
+                    ephemeral=True
+                )
+            except ValueError as e:
+                await interaction.followup.send(
+                    embed=create_embed("Error", str(e)),
+                    ephemeral=True
+                )
+            except asyncio.TimeoutError:
+                await interaction.followup.send(
+                    embed=create_embed("Timeout", "You took too long to respond"),
+                    ephemeral=True
+                )
+
+        @discord.ui.button(label="Set Webhook", style=discord.ButtonStyle.blurple)
+        async def set_webhook(self, interaction: discord.Interaction, button: discord.ui.Button):
+            await interaction.response.send_message("Please enter the webhook URL:", ephemeral=True)
+            try:
+                msg = await bot.wait_for(
+                    'message',
+                    check=lambda m: m.author == ctx.author,
+                    timeout=80.0
+                )
+                
+                autoreply_configs[user_id][self.account_name]["webhook"] = msg.content
+                save_autoreply_configs()
+                
+                await interaction.followup.send(
+                    embed=create_embed("Webhook Set", "Autoreply webhook has been set"),
+                    ephemeral=True
+                )
+            except asyncio.TimeoutError:
+                await interaction.followup.send(
+                    embed=create_embed("Timeout", "You took too long to respond"),
+                    ephemeral=True
+                )
+
+        @discord.ui.button(label="Remove Reply", style=discord.ButtonStyle.red)
+        async def remove_reply(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if not autoreply_configs[user_id][self.account_name].get("keywords"):
+                await interaction.response.send_message(
+                    embed=create_embed("No Keywords", "No keywords configured to remove"),
+                    ephemeral=True
+                )
+                return
+
+            options = [
+                discord.SelectOption(label=keyword, value=keyword)
+                for keyword in autoreply_configs[user_id][self.account_name]["keywords"].keys()
+            ]
+            
+            select = discord.ui.Select(
+                placeholder="Select keyword to remove",
+                options=options
+            )
+
+            async def remove_callback(select_interaction):
+                keyword = select_interaction.data["values"][0]
+                del autoreply_configs[user_id][self.account_name]["keywords"][keyword]
+                save_autoreply_configs()
+                
+                await select_interaction.response.send_message(
+                    embed=create_embed("Keyword Removed", f"Removed autoreply for '{keyword}'"),
+                    ephemeral=True
+                )
+
+            select.callback = remove_callback
+            view = discord.ui.View()
+            view.add_item(select)
+            
+            await interaction.response.send_message(
+                embed=create_embed("Remove Keyword", "Select a keyword to remove:"),
+                view=view,
+                ephemeral=True
+            )
+
+    class AutoreplyModal(discord.ui.Modal):
+        def __init__(self, account_name):
+            super().__init__(title="Configure Autoreply")
+            self.account_name = account_name
+            
+            self.keyword = discord.ui.TextInput(
+                label="Keyword (empty for default)",
+                required=False,
+                placeholder="Enter keyword or leave empty for default reply"
+            )
+            
+            self.reply = discord.ui.TextInput(
+                label="Reply Message",
+                style=discord.TextStyle.paragraph,
+                required=True,
+                placeholder="Enter the reply message"
+            )
+            
+            self.add_item(self.keyword)
+            self.add_item(self.reply)
+
+        async def on_submit(self, interaction: discord.Interaction):
+            if user_id not in autoreply_configs:
+                autoreply_configs[user_id] = {}
+            
+            if self.account_name not in autoreply_configs[user_id]:
+                autoreply_configs[user_id][self.account_name] = {
+                    "keywords": {},
+                    "delay": 5,
+                    "webhook": None
+                }
+            
+            keyword = self.keyword.value.strip() or "default"
+            autoreply_configs[user_id][self.account_name]["keywords"][keyword] = self.reply.value
+            
+            save_autoreply_configs()
+            
+            await interaction.response.send_message(
+                embed=create_embed(
+                    "Autoreply Configured",
+                    f"Keyword: {keyword}\nReply: {self.reply.value}"
+                ),
+                ephemeral=True
+            )
+
+    async def select_callback(interaction):
+        account_name = interaction.data["values"][0]
+        view = AutoreplyConfigView(account_name)
+        
+        await interaction.response.send_message(
+            embed=create_embed(
+                "Autoreply Configuration",
+                "Choose an action to configure autoreply settings:"
+            ),
+            view=view,
+            ephemeral=True
+        )
+
+    select_menu.callback = select_callback
+    view = discord.ui.View()
+    view.add_item(select_menu)
+    
+    await ctx.send(
+        embed=create_embed("Select Account", "Choose an account to configure autoreply:"),
+        view=view
+    )
+
+## Auto reply : Start / Stop ---------------------------------------------------------------------------------------------------------------
+def truncate_message(message, max_length=1024):
+    """
+    Truncates a message if it exceeds the maximum length.
+    Returns the truncated message and a boolean indicating if it was truncated.
+    """
+    if len(message) > max_length:
+        return "Text was too large to fetch", True
+    return message, False
+
+
+
+# Add to global variables
+autoreply_clients = {}  # Store active autoreply clients
+replied_users = {}  # Track users who received default replies
+
+@bot.hybrid_command(name="startautoreply", description="Start autoreply for a specific account")
+async def startautoreply(ctx):
+    user_id = str(ctx.author.id)
+    
+    if user_id not in user_accounts or not user_accounts[user_id].get("accounts"):
+        await ctx.send(embed=create_embed("No Accounts Found", "You have no registered accounts."))
+        return
+
+    accounts = user_accounts[user_id]["accounts"]
+    account_options = [discord.SelectOption(label=name, value=name) for name in accounts.keys()]
+    
+    select_menu = discord.ui.Select(placeholder="Select an account", options=account_options)
+
+    async def select_callback(interaction):
+        account_name = interaction.data["values"][0]
+        
+        # Check if autoreply is configured
+        if account_name not in autoreply_configs.get(user_id, {}):
+            await interaction.response.send_message(
+                embed=create_embed(
+                    "<:warnsign:1309124972899340348> Not Configured",
+                    "Please configure autoreply settings first using `/autoreply`"
+                ),
+                ephemeral=True
+            )
+            return
+
+        config = autoreply_configs[user_id][account_name]
+        
+        # Initialize tracking for this account
+        if account_name not in replied_users:
+            replied_users[account_name] = set()
+
+        def run_autoreply():
+            client = discum.Client(token=accounts[account_name]["token"])
+            autoreply_clients[account_name] = client
+            
+            @client.gateway.command
+            def on_message(resp):
+                if not autoreply_configs[user_id][account_name].get("active", False):
+                    client.gateway.close()
+                    return
+
+                if resp.event.message:
+                    message = resp.parsed.auto()
+                    if message.get("channel_type") == 1:  # DM channel
+                        content = message.get("content", "").lower()
+                        channel_id = message.get("channel_id")
+                        sender_id = message.get("author", {}).get("id")
+                        
+                        response = None
+                        keyword_matched = False
+
+                        # Check keywords first
+                        for keyword, reply in config["keywords"].items():
+                            if keyword != "default" and keyword.lower() in content:
+                                response = reply
+                                keyword_matched = True
+                                break
+                        
+                        # If no keyword match and user hasn't received default reply
+                        if not keyword_matched and "default" in config["keywords"] and sender_id not in replied_users[account_name]:
+                            response = config["keywords"]["default"]
+                            replied_users[account_name].add(sender_id)  # Mark user as replied
+                        
+                        if response:
+                            time.sleep(config.get("delay", 5))
+                            client.sendMessage(channel_id, response)
+                            
+                            if config.get("webhook"):
+                                try:
+                                    webhook = SyncWebhook.from_url(config["webhook"])
+                                    embed = discord.Embed(
+                                        title="<:mailbox:1308057455921467452> Autoreply Sent\n═════════════════════",
+                                        color=discord.Color.from_rgb(0, 0, 0),
+                                        timestamp=datetime.utcnow()
+                                    )
+                                    embed.add_field(name="<:bott:1308056946263461989> Account", value=f"```{account_name}```", inline=False)
+                                    embed.add_field(name="<:mannequin:1324255991037952070> Messages sended to", value=f"<@{sender_id}>", inline=False)
+                                    trigger_content, was_truncated = truncate_message(content)
+                                    embed.add_field(name="<:sign:1309134372800299220> Keyword triggered", value=f"```{trigger_content}```{' (truncated)' if was_truncated else ''}", inline=False)
+                                    reply_content, was_truncated = truncate_message(response)
+                                    embed.add_field(name="<:arrow:1308057423017410683> Reply", value=f"```{reply_content}```{' (truncated)' if was_truncated else ''}", inline=False)
+                                    webhook.send(embed=embed)
+                                except Exception as e:
+                                    print(f"Failed to send webhook notification: {e}")
+
+            client.gateway.run()
+
+        # Start monitoring in a separate thread
+        threading.Thread(target=run_autoreply, daemon=True).start()
+        
+        # Update status
+        config["active"] = True
+        save_autoreply_configs()
+        
+        await interaction.response.send_message(
+            embed=create_embed(
+                "Autoreply Started <a:Online:1315112774350803066>",
+                f"Autoreply is now active for **{account_name}**"
+            ),
+            ephemeral=True
+        )
+
+    select_menu.callback = select_callback
+    view = discord.ui.View()
+    view.add_item(select_menu)
+    
+    await ctx.send(
+        embed=create_embed("Start Autoreply", "Select an account to start autoreply:"),
+        view=view
+    )
+
+@bot.hybrid_command(name="stopautoreply", description="Stop autoreply for a specific account")
+async def stopautoreply(ctx):
+    user_id = str(ctx.author.id)
+    
+    if user_id not in autoreply_configs:
+        await ctx.send(embed=create_embed("No Configuration", "No autoreply configurations found."))
+        return
+
+    # Get accounts with active autoreply
+    active_accounts = [
+        name for name, config in autoreply_configs[user_id].items()
+        if config.get("active", False)
+    ]
+    
+    if not active_accounts:
+        await ctx.send(embed=create_embed("No Active Autoreply", "No accounts have active autoreply."))
+        return
+
+    select_menu = discord.ui.Select(
+        placeholder="Select an account",
+        options=[discord.SelectOption(label=name, value=name) for name in active_accounts]
+    )
+
+    async def select_callback(interaction):
+        account_name = interaction.data["values"][0]
+        
+        # Stop autoreply
+        autoreply_configs[user_id][account_name]["active"] = False
+        
+        # Close the gateway connection if it exists
+        if account_name in autoreply_clients:
+            try:
+                autoreply_clients[account_name].gateway.close()
+                del autoreply_clients[account_name]
+            except Exception as e:
+                print(f"Error closing gateway: {e}")
+        
+        # Clear replied users for this account
+        if account_name in replied_users:
+            replied_users[account_name].clear()
+        
+        save_autoreply_configs()
+        
+        await interaction.response.send_message(
+            embed=create_embed(
+                "Autoreply Stopped <a:offline:1315112799822680135>",
+                f"Autoreply has been stopped for **{account_name}**"
+            ),
+            ephemeral=True
+        )
+
+    select_menu.callback = select_callback
+    view = discord.ui.View()
+    view.add_item(select_menu)
+    
+    await ctx.send(
+        embed=create_embed("Stop Autoreply", "Select an account to stop autoreply:"),
+        view=view
+    )
+
+## -----------------------------------------------------------
+
+@bot.hybrid_command(name="removeconfig", description="Remove configured servers or channels from an account")
+async def removeconfig(ctx):
+    user_id = str(ctx.author.id)
+    
+    if user_id not in user_accounts or not user_accounts[user_id].get("accounts"):
+        await ctx.send(embed=create_embed("No Accounts Found", "You have no registered accounts."))
+        return
+
+    accounts = user_accounts[user_id]["accounts"]
+    account_options = [discord.SelectOption(label=name, value=name) for name in accounts.keys()]
+    
+    select_account = discord.ui.Select(
+        placeholder="Select an account",
+        options=account_options
+    )
+
+    class RemoveConfigView(discord.ui.View):
+        def __init__(self, account_info, server_id=None):
+            super().__init__()
+            self.account_info = account_info
+            self.server_id = server_id
+
+        @discord.ui.button(label="Remove Server", style=discord.ButtonStyle.red)
+        async def remove_server(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if not self.account_info.get("servers"):
+                await interaction.response.send_message(
+                    embed=create_embed("No Servers", "No servers configured for this account."),
+                    ephemeral=True
+                )
+                return
+
+            server_options = []
+            for server_id, server_info in self.account_info["servers"].items():
+                server_options.append(
+                    discord.SelectOption(
+                        label=f"{server_info.get('name', 'Unknown Server')}",
+                        description=f"ID: {server_id}",
+                        value=server_id
+                    )
+                )
+
+            select_server = discord.ui.Select(
+                placeholder="Select server to remove",
+                options=server_options
+            )
+
+            async def server_callback(server_interaction):
+                server_id = server_interaction.data["values"][0]
+                server_name = self.account_info["servers"][server_id].get("name", "Unknown Server")
+                
+                # Remove server configuration
+                del self.account_info["servers"][server_id]
+                save_data()
+
+                success_embed = discord.Embed(
+                    title="<:verified:1308057482085666837> Server Removed",
+                    description=(
+                        f"**Server Name:** {server_name}\n"
+                        f"**Server ID:** `{server_id}`\n"
+                        f"All channels and configurations for this server have been removed."
+                    ),
+                    color=discord.Color.green(),
+                    timestamp=datetime.utcnow()
+                )
+                
+                await server_interaction.response.send_message(embed=success_embed, ephemeral=True)
+
+            select_server.callback = server_callback
+            view = discord.ui.View()
+            view.add_item(select_server)
+            
+            await interaction.response.send_message(
+                embed=create_embed("Remove Server", "Select a server to remove:"),
+                view=view,
+                ephemeral=True
+            )
+
+        @discord.ui.button(label="Remove Channel", style=discord.ButtonStyle.red)
+        async def remove_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if not self.account_info.get("servers"):
+                await interaction.response.send_message(
+                    embed=create_embed("No Servers", "No servers configured for this account."),
+                    ephemeral=True
+                )
+                return
+
+            # First, select a server
+            server_options = []
+            for server_id, server_info in self.account_info["servers"].items():
+                channel_count = len(server_info.get("channels", {}))
+                server_options.append(
+                    discord.SelectOption(
+                        label=f"{server_info.get('name', 'Unknown Server')}",
+                        description=f"ID: {server_id} | {channel_count} channels",
+                        value=server_id
+                    )
+                )
+
+            select_server = discord.ui.Select(
+                placeholder="Select a server",
+                options=server_options
+            )
+
+            async def server_callback(server_interaction):
+                server_id = server_interaction.data["values"][0]
+                server_info = self.account_info["servers"][server_id]
+                
+                if not server_info.get("channels"):
+                    await server_interaction.response.send_message(
+                        embed=create_embed("No Channels", "No channels configured for this server."),
+                        ephemeral=True
+                    )
+                    return
+
+                # Create channel selection
+                channel_options = []
+                for channel_id, channel_info in server_info["channels"].items():
+                    channel_options.append(
+                        discord.SelectOption(
+                            label=f"{channel_info.get('name', 'Unknown Channel')}",
+                            description=f"ID: {channel_id}",
+                            value=channel_id
+                        )
+                    )
+
+                select_channel = discord.ui.Select(
+                    placeholder="Select channel to remove",
+                    options=channel_options
+                )
+
+                async def channel_callback(channel_interaction):
+                    channel_id = channel_interaction.data["values"][0]
+                    channel_name = server_info["channels"][channel_id].get("name", "Unknown Channel")
+                    
+                    # Remove channel configuration
+                    del server_info["channels"][channel_id]
+                    save_data()
+
+                    success_embed = discord.Embed(
+                        title="<:verified:1308057482085666837> Channel Removed",
+                        description=(
+                            f"**Server:** {server_info.get('name')}\n"
+                            f"**Channel:** {channel_name}\n"
+                            f"**Channel ID:** `{channel_id}`\n"
+                            f"Channel configuration has been removed."
+                        ),
+                        color=discord.Color.green(),
+                        timestamp=datetime.utcnow()
+                    )
+                    
+                    await channel_interaction.response.send_message(embed=success_embed, ephemeral=True)
+
+                select_channel.callback = channel_callback
+                view = discord.ui.View()
+                view.add_item(select_channel)
+                
+                await server_interaction.response.send_message(
+                    embed=create_embed("Remove Channel", "Select a channel to remove:"),
+                    view=view,
+                    ephemeral=True
+                )
+
+            select_server.callback = server_callback
+            view = discord.ui.View()
+            view.add_item(select_server)
+            
+            await interaction.response.send_message(
+                embed=create_embed("Select Server", "Choose a server to remove channels from:"),
+                view=view,
+                ephemeral=True
+            )
+
+    async def account_callback(interaction):
+        account_name = interaction.data["values"][0]
+        account_info = accounts[account_name]
+        
+        view = RemoveConfigView(account_info)
+        
+        await interaction.response.send_message(
+            embed=create_embed(
+                "Remove Configuration",
+                f"Selected Account: **{account_name}**\n\n"
+                "Choose what you want to remove:"
+            ),
+            view=view,
+            ephemeral=True
+        )
+
+    select_account.callback = account_callback
+    view = discord.ui.View()
+    view.add_item(select_account)
+
+    await ctx.send(
+        embed=create_embed("Select Account", "Choose an account to remove configurations from:"),
+        view=view
+    )
+## --------------------------------------------------------------------------------------------------------
 def load_users():
     load_data()
     return user_accounts
